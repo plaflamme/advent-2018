@@ -2,18 +2,29 @@ use structopt::StructOpt;
 
 mod puzzle1;
 
+pub trait Puzzle {
+    fn part1(&self) -> i32;
+    fn part2(&self) -> i32;
+}
+
 #[derive(StructOpt)]
 struct Cli {
-    puzzle: u32,
+    puzzle: usize,
     part: u32
 }
 
 fn main() {
+    let puzzles: Vec<Box<dyn Puzzle>> = vec!(Box::new(puzzle1::Puzzle1));
     let args = Cli::from_args();
-    let result = match args {
-        Cli { puzzle: 1, part} => puzzle1::solve(part),
-        _ => panic!("puzzle not implemented")
-    };
 
+    assert!(args.puzzle > 0, "Puzzles start at index 1.");
+    assert!(args.puzzle <= puzzles.len(), "Puzzle {} does not yet have a solution", args.puzzle);
+    let ref puzzle = puzzles[args.puzzle-1];
+    let result = match args.part {
+        1 => puzzle.part1(),
+        2 => puzzle.part2(),
+        _ => panic!("puzzles part is either 1 or 2")
+    };
+    
     println!("Puzzle {} part {}: {}", args.puzzle, args.part, result);
 }

@@ -19,31 +19,25 @@ fn input() -> Vec<i32> {
         .collect()
 }
 
-fn part1() -> i32 {
-    input().iter().sum::<i32>()
-}
+pub struct Puzzle1;
 
-fn part2() -> i32 {
+impl crate::Puzzle for Puzzle1 {
+    fn part1(&self) -> i32 {
+        input().iter().sum::<i32>()
+    }
 
-    let mut seen_freqs = HashSet::new();
-    seen_freqs.insert(0);
+    fn part2(&self) -> i32 {
+        let mut seen_freqs = HashSet::new();
+        seen_freqs.insert(0);
 
-    input()
-        .iter()
-        .cycle()
-        .scan(0, |freq, inc| {
-            *freq = *freq + inc; // NOTE: we're mutating the internal state here. The state of scan isn't an accumulator like fold.
-            Some(*freq)
-        })
-        .find(|x| !seen_freqs.insert(*x))
-        .expect("couldn't find a freq")
-
-}
-
-pub fn solve(part: u32) -> i32 {
-    match part {
-        1 => part1(),
-        2 => part2(),
-        _ => panic!("no such part")
+        input()
+            .iter()
+            .cycle()
+            .scan(0, |freq, inc| {
+                *freq = *freq + inc; // NOTE: we're mutating the internal state here. The state of scan isn't an accumulator like fold.
+                Some(*freq)
+            })
+            .find(|x| !seen_freqs.insert(*x))
+            .expect("couldn't find a freq")
     }
 }
