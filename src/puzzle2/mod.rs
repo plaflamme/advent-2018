@@ -34,7 +34,7 @@ fn compute_checksum(s: &str) -> Checksum {
 }
 impl crate::Puzzle for Puzzle2 {
     
-    fn part1(&self) -> i32 {
+    fn part1(&self) -> String {
         let checksum: Checksum = input()
             .iter()
             .map(|word| compute_checksum(word))
@@ -45,10 +45,10 @@ impl crate::Puzzle for Puzzle2 {
                 }
             });
 
-        checksum.twos * checksum.threes
+        (checksum.twos * checksum.threes).to_string()
     }
     
-    fn part2(&self) -> i32 {
+    fn part2(&self) -> String {
 
         let words = input();
 
@@ -63,8 +63,6 @@ impl crate::Puzzle for Puzzle2 {
                 else { Some(common) }
             });
 
-        println!("{}", found.expect("couldn't find a box"));
-
-        panic!(); // TODO: figure out how to return not-an-i32
+        found.expect("couldn't find a box")
     }
 }

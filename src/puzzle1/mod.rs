@@ -22,11 +22,11 @@ fn input() -> Vec<i32> {
 pub struct Puzzle1;
 
 impl crate::Puzzle for Puzzle1 {
-    fn part1(&self) -> i32 {
-        input().iter().sum::<i32>()
+    fn part1(&self) -> String {
+        input().iter().sum::<i32>().to_string()
     }
 
-    fn part2(&self) -> i32 {
+    fn part2(&self) -> String {
         let mut seen_freqs = HashSet::new();
         seen_freqs.insert(0);
 
@@ -39,5 +39,6 @@ impl crate::Puzzle for Puzzle1 {
             })
             .find(|x| !seen_freqs.insert(*x))
             .expect("couldn't find a freq")
+            .to_string()
     }
 }

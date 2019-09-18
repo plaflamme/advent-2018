@@ -4,8 +4,8 @@ mod puzzle1;
 mod puzzle2;
 
 pub trait Puzzle {
-    fn part1(&self) -> i32;
-    fn part2(&self) -> i32;
+    fn part1(&self) -> String;
+    fn part2(&self) -> String;
 }
 
 #[derive(StructOpt)]
