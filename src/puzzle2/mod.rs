@@ -49,6 +49,28 @@ impl crate::Puzzle for Puzzle2 {
     }
     
     fn part2(&self) -> i32 {
-        panic!();
+        
+        let mut common_chars: Option<Box<String>> = None;
+
+        for a in input() {
+            for b in input() {
+                let char_dist = a.chars().zip(b.chars())
+                    .fold(0, |diff, (left, right)| {
+                        if left != right { diff + 1 }
+                        else { diff }
+                    });
+
+                if char_dist == 1 {
+                    let c = a.chars().zip(b.chars()).filter_map(|(l,r)| if l == r { Some(l) } else { None }).collect::<String>();
+                    common_chars = Some(Box::new(c));
+                    break;
+                }
+            }
+            if common_chars.is_some() { break; }
+        }
+
+        println!("{}", common_chars.expect("couldn't find a box"));
+
+        panic!(); // TODO: figure out how to return not-an-i32
     }
 }
