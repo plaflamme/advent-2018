@@ -19,11 +19,11 @@ fn input() -> Vec<i32> {
         .collect()
 }
 
-pub fn solve_part1() -> i32 {
+fn part1() -> i32 {
     input().iter().sum::<i32>()
 }
 
-pub fn solve_part2() -> i32 {
+fn part2() -> i32 {
 
     let mut seen_freqs = HashSet::new();
     seen_freqs.insert(0);
@@ -38,4 +38,12 @@ pub fn solve_part2() -> i32 {
         .find(|x| !seen_freqs.insert(*x))
         .expect("couldn't find a freq")
 
+}
+
+pub fn solve(part: u32) -> i32 {
+    match part {
+        1 => part1(),
+        2 => part2(),
+        _ => panic!("no such part")
+    }
 }
