@@ -5,8 +5,8 @@ mod puzzle2;
 mod puzzle3;
 
 pub trait Puzzle {
-    fn part1(&self) -> String;
-    fn part2(&self) -> String;
+    fn part1(&self, input: String) -> String;
+    fn part2(&self, input: String) -> String;
 }
 
 #[derive(StructOpt)]
@@ -22,9 +22,10 @@ fn main() {
     assert!(args.puzzle > 0, "Puzzles start at index 1.");
     assert!(args.puzzle <= puzzles.len(), "Puzzle {} does not yet have a solution", args.puzzle);
     let ref puzzle = puzzles[args.puzzle-1];
+    let input = std::fs::read_to_string(format!("src/puzzle{}/input.txt", args.puzzle)).expect("cannot read puzzle input.");
     let result = match args.part {
-        1 => puzzle.part1(),
-        2 => puzzle.part2(),
+        1 => puzzle.part1(input),
+        2 => puzzle.part2(input),
         _ => panic!("puzzles part is either 1 or 2")
     };
     

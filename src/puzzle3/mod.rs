@@ -79,15 +79,14 @@ impl FromStr for Claim {
     }
 }
 
-fn parse() -> Vec<Claim> {
-    let content = std::fs::read_to_string("src/puzzle3/input.txt").expect("cannot read puzzle input.");
-    content.lines()
+fn parse(input: String) -> Vec<Claim> {
+    input.lines()
         .map(|x| Claim::from_str(x).unwrap_or_else(|_| panic!("invalid line {}", x)))
         .collect::<Vec<_>>()
 }
 
-fn intersecting() -> HashSet<Pt> {
-    let surfaces = &parse()
+fn intersecting(claims: &Vec<Claim>) -> HashSet<Pt> {
+    let surfaces = &claims
         .iter()
         .map(|x| {
             x.surface()
@@ -112,12 +111,13 @@ pub struct Puzzle3;
 
 impl crate::Puzzle for Puzzle3 {
 
-    fn part1(&self) -> String {
-        intersecting().len().to_string()
+    fn part1(&self, input: String) -> String {
+        intersecting(&parse(input)).len().to_string()
     }
-    fn part2(&self) -> String {
-        let pts = intersecting();
-        parse()
+    fn part2(&self, input: String) -> String {
+        let claims = parse(input);
+        let pts = intersecting(&claims);
+        claims
             .iter()
             .find_map(|claim| {
                 if claim.surface().intersection(&pts).collect::<HashSet<_>>().is_empty() { Some(claim.id.to_owned()) } else { None }

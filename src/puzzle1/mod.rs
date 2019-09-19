@@ -1,10 +1,7 @@
 use std::collections::HashSet;
 
-fn input() -> Vec<i32> {
-
-    let content = std::fs::read_to_string("src/puzzle1/puzzle1.txt").expect("cannot read puzzle input.");
-  
-    content.lines()
+fn parse(input: String) -> Vec<i32> {
+    input.lines()
         .filter(|s| !s.is_empty())
         .map(|s| {
             let mut st = String::from(s);
@@ -22,15 +19,16 @@ fn input() -> Vec<i32> {
 pub struct Puzzle1;
 
 impl crate::Puzzle for Puzzle1 {
-    fn part1(&self) -> String {
-        input().iter().sum::<i32>().to_string()
+
+    fn part1(&self, input: String) -> String {
+        parse(input).iter().sum::<i32>().to_string()
     }
 
-    fn part2(&self) -> String {
+    fn part2(&self, input: String) -> String {
         let mut seen_freqs = HashSet::new();
         seen_freqs.insert(0);
 
-        input()
+        parse(input)
             .iter()
             .cycle()
             .scan(0, |freq, inc| {

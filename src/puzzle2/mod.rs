@@ -2,10 +2,8 @@ use std::collections::HashMap;
 
 pub struct Puzzle2;
 
-fn input() -> Vec<String> {
-
-    let content = std::fs::read_to_string("src/puzzle2/input.txt").expect("cannot read puzzle input.");
-    content.lines().map(|x| x.to_owned()).collect::<Vec<_>>()
+fn parse(input: String) -> Vec<String> {
+    input.lines().map(|x| x.to_owned()).collect::<Vec<_>>()
 }
 
 #[derive(Debug)]
@@ -33,9 +31,9 @@ fn compute_checksum(s: &str) -> Checksum {
     })
 }
 impl crate::Puzzle for Puzzle2 {
-    
-    fn part1(&self) -> String {
-        let checksum: Checksum = input()
+
+    fn part1(&self, input: String) -> String {
+        let checksum: Checksum = parse(input)
             .iter()
             .map(|word| compute_checksum(word))
             .fold(Checksum { twos: 0, threes: 0 }, |acc, c| {
@@ -48,9 +46,9 @@ impl crate::Puzzle for Puzzle2 {
         (checksum.twos * checksum.threes).to_string()
     }
     
-    fn part2(&self) -> String {
+    fn part2(&self, input: String) -> String {
 
-        let words = input();
+        let words = parse(input);
 
         let found = words.iter()
             .flat_map(|a| words.iter().map(move |b| (a,b)))
