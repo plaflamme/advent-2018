@@ -2,6 +2,7 @@ use structopt::StructOpt;
 
 mod puzzle1;
 mod puzzle2;
+mod puzzle3;
 
 pub trait Puzzle {
     fn part1(&self) -> String;
@@ -15,7 +16,7 @@ struct Cli {
 }
 
 fn main() {
-    let puzzles: Vec<Box<dyn Puzzle>> = vec!(Box::new(puzzle1::Puzzle1), Box::new(puzzle2::Puzzle2));
+    let puzzles: Vec<Box<dyn Puzzle>> = vec!(Box::new(puzzle1::Puzzle1), Box::new(puzzle2::Puzzle2), Box::new(puzzle3::Puzzle3));
     let args = Cli::from_args();
 
     assert!(args.puzzle > 0, "Puzzles start at index 1.");
