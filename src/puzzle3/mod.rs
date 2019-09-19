@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use std::collections::HashSet;
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 struct Pt {
     left: u16,
     top: u16
@@ -86,29 +86,42 @@ fn parse() -> Vec<Claim> {
         .collect::<Vec<_>>()
 }
 
+fn intersecting() -> HashSet<Pt> {
+    let surfaces = &parse()
+        .iter()
+        .map(|x| {
+            x.surface()
+        })
+        .collect::<Vec<_>>();
+
+    // TODO: this is super slow
+    let mut intersecting = HashSet::new();
+    for a in surfaces {
+        for b in surfaces {
+            if a == b { continue };
+            a.intersection(&b).for_each(|x| {
+                intersecting.insert(*x);
+            });
+        }
+    }
+
+    intersecting
+}
+
 pub struct Puzzle3;
 
 impl crate::Puzzle for Puzzle3 {
+
     fn part1(&self) -> String {
-        let surfaces = &parse()
-            .iter()
-            .map(|x| {
-                x.surface()
-            })
-            .collect::<Vec<_>>();
-
-        // TODO: this is super slow
-        let mut intersecting = HashSet::new();
-        for a in surfaces {
-            for b in surfaces {
-                if a == b { continue };
-                a.intersection(&b).for_each(|x| {
-                    intersecting.insert(x);
-                });
-            }
-        }
-
-        intersecting.len().to_string()
+        intersecting().len().to_string()
     }
-    fn part2(&self) -> String { unimplemented!() }
+    fn part2(&self) -> String {
+        let pts = intersecting();
+        parse()
+            .iter()
+            .find_map(|claim| {
+                if claim.surface().intersection(&pts).collect::<HashSet<_>>().is_empty() { Some(claim.id.to_owned()) } else { None }
+            })
+            .expect("no claim is not intersecting")
+    }
 }
