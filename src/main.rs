@@ -4,6 +4,7 @@ mod puzzle1;
 mod puzzle2;
 mod puzzle3;
 mod puzzle4;
+mod puzzle5;
 
 pub trait Puzzle {
     fn part1(&self, input: String) -> String;
@@ -17,7 +18,13 @@ struct Cli {
 }
 
 fn main() {
-    let puzzles: Vec<Box<dyn Puzzle>> = vec!(Box::new(puzzle1::Puzzle1), Box::new(puzzle2::Puzzle2), Box::new(puzzle3::Puzzle3), Box::new(puzzle4::Puzzle4));
+    let puzzles: Vec<Box<dyn Puzzle>> = vec!(
+        Box::new(puzzle1::Puzzle1),
+        Box::new(puzzle2::Puzzle2),
+        Box::new(puzzle3::Puzzle3),
+        Box::new(puzzle4::Puzzle4),
+        Box::new(puzzle5::Puzzle5),
+    );
     let args = Cli::from_args();
 
     assert!(args.puzzle > 0, "Puzzles start at index 1.");
