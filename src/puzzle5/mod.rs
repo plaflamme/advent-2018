@@ -1,4 +1,5 @@
 use bit_set::BitSet;
+use std::collections::HashSet;
 
 fn collapse(input: &String) -> BitSet {
     let chars = input.chars().collect::<Vec<_>>();
@@ -49,14 +50,29 @@ impl crate::Puzzle for Puzzle5 {
     }
 
     fn part2(&self, input: String) -> String {
-        unimplemented!()
+        let trimmed = input.trim().to_string();
+        let mut all_units = HashSet::new();
+        for c in trimmed.chars() {
+            all_units.insert(c.to_ascii_lowercase());
+        }
+
+        let min_polymer = all_units.iter()
+            .map(|r| {
+                let mut copied = trimmed.clone();
+                copied.retain(|c| c.to_ascii_lowercase() != *r);
+                let bits = collapse(&copied);
+                copied.len() - bits.len()
+            })
+            .min();
+
+        min_polymer.expect("no polymer").to_string()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ops::{Range, RangeInclusive};
+    use std::ops::RangeInclusive;
 
     fn assert_collapsed(input: String, collapsed: Vec<RangeInclusive<usize>>) -> () {
         let mut bits = BitSet::with_capacity(input.len());
@@ -65,7 +81,6 @@ mod tests {
                 bits.insert(b);
             }
         }
-
         assert_eq!(collapse(&input), bits);
     }
 
