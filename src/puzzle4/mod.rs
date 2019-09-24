@@ -190,7 +190,15 @@ impl crate::Puzzle for Puzzle4 {
     }
 
     fn part2(&self, input: String) -> String {
-        unimplemented!()
+        let events = parse(input);
+        let guard_shifts = to_shifts(&events);
+
+        let worse = guard_shifts.iter()
+            .map(|x| x.summary())
+            .max_by(|a,b| a.worse_minute.sleeping.cmp(&b.worse_minute.sleeping)).expect("no shifts");
+
+        println!("{:?}", worse);
+        (worse.id * worse.worse_minute.minute as u32).to_string()
     }
 }
 
