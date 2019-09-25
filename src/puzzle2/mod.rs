@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-pub struct Puzzle2;
-
 fn parse(input: String) -> Vec<String> {
     input.lines().map(|x| x.to_owned()).collect::<Vec<_>>()
 }
@@ -30,10 +28,19 @@ fn compute_checksum(s: &str) -> Checksum {
         check
     })
 }
+
+pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
+    Box::new(Puzzle2 { words: parse(input) })
+}
+
+pub struct Puzzle2 {
+    words: Vec<String>
+}
+
 impl crate::Puzzle for Puzzle2 {
 
-    fn part1(&self, input: String) -> String {
-        let checksum: Checksum = parse(input)
+    fn part1(&self) -> String {
+        let checksum: Checksum = self.words
             .iter()
             .map(|word| compute_checksum(word))
             .fold(Checksum { twos: 0, threes: 0 }, |acc, c| {
@@ -46,12 +53,10 @@ impl crate::Puzzle for Puzzle2 {
         (checksum.twos * checksum.threes).to_string()
     }
     
-    fn part2(&self, input: String) -> String {
+    fn part2(&self) -> String {
 
-        let words = parse(input);
-
-        let found = words.iter()
-            .flat_map(|a| words.iter().map(move |b| (a,b)))
+        let found = self.words.iter()
+            .flat_map(|a| self.words.iter().map(move |b| (a,b)))
             .find_map(|(a,b)| {
                 let common = a.chars().zip(b.chars())
                     .filter_map(|(l,r)| if l == r { Some(l) } else { None } )

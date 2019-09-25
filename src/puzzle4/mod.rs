@@ -173,13 +173,17 @@ fn to_shifts(events: &Vec<Event>) -> Vec<Guard> {
         .collect::<Vec<_>>()
 }
 
-pub struct Puzzle4;
+pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
+    Box::new(Puzzle4 { events: parse(input) })
+}
+pub struct Puzzle4 {
+    events: Vec<Event>
+}
 
 impl crate::Puzzle for Puzzle4 {
 
-    fn part1(&self, input: String) -> String {
-        let events = parse(input);
-        let guard_shifts = to_shifts(&events);
+    fn part1(&self) -> String {
+        let guard_shifts = to_shifts(&self.events);
 
         let worse = guard_shifts.iter()
             .map(|x| x.summary())
@@ -189,9 +193,8 @@ impl crate::Puzzle for Puzzle4 {
         (worse.id * worse.worse_minute.minute as u32).to_string()
     }
 
-    fn part2(&self, input: String) -> String {
-        let events = parse(input);
-        let guard_shifts = to_shifts(&events);
+    fn part2(&self) -> String {
+        let guard_shifts = to_shifts(&self.events);
 
         let worse = guard_shifts.iter()
             .map(|x| x.summary())

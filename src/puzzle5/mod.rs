@@ -39,26 +39,29 @@ fn collapse(input: &String) -> BitSet {
     collapsed
 }
 
-pub struct Puzzle5;
+pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
+    Box::new(Puzzle5 { input: input.trim().to_string() })
+}
+pub struct Puzzle5 {
+    input: String
+}
 
 impl crate::Puzzle for Puzzle5 {
-    fn part1(&self, input: String) -> String {
-        let trimmed = input.trim().to_string();
-        let bits = collapse(&trimmed);
-        let remains = trimmed.len() - bits.len();
+    fn part1(&self) -> String {
+        let bits = collapse(&self.input);
+        let remains = self.input.len() - bits.len();
         remains.to_string()
     }
 
-    fn part2(&self, input: String) -> String {
-        let trimmed = input.trim().to_string();
+    fn part2(&self) -> String {
         let mut all_units = HashSet::new();
-        for c in trimmed.chars() {
+        for c in self.input.chars() {
             all_units.insert(c.to_ascii_lowercase());
         }
 
         let min_polymer = all_units.iter()
             .map(|r| {
-                let mut copied = trimmed.clone();
+                let mut copied = self.input.clone();
                 copied.retain(|c| c.to_ascii_lowercase() != *r);
                 let bits = collapse(&copied);
                 copied.len() - bits.len()

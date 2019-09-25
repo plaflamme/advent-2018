@@ -107,17 +107,23 @@ fn intersecting(claims: &Vec<Claim>) -> HashSet<Pt> {
     intersecting
 }
 
-pub struct Puzzle3;
+pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
+    Box::new(Puzzle3 { claims: parse(input) })
+}
+
+pub struct Puzzle3 {
+    claims: Vec<Claim>
+}
 
 impl crate::Puzzle for Puzzle3 {
 
-    fn part1(&self, input: String) -> String {
-        intersecting(&parse(input)).len().to_string()
+    fn part1(&self) -> String {
+        intersecting(&self.claims).len().to_string()
     }
-    fn part2(&self, input: String) -> String {
-        let claims = parse(input);
-        let pts = intersecting(&claims);
-        claims
+
+    fn part2(&self) -> String {
+        let pts = intersecting(&self.claims);
+        self.claims
             .iter()
             .find_map(|claim| {
                 if claim.surface().intersection(&pts).collect::<HashSet<_>>().is_empty() { Some(claim.id.to_owned()) } else { None }

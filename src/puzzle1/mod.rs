@@ -16,19 +16,25 @@ fn parse(input: String) -> Vec<i32> {
         .collect()
 }
 
-pub struct Puzzle1;
+pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
+    Box::new(Puzzle1 { input: parse(input) })
+}
+
+pub struct Puzzle1 {
+    input: Vec<i32>
+}
 
 impl crate::Puzzle for Puzzle1 {
 
-    fn part1(&self, input: String) -> String {
-        parse(input).iter().sum::<i32>().to_string()
+    fn part1(&self) -> String {
+        self.input.iter().sum::<i32>().to_string()
     }
 
-    fn part2(&self, input: String) -> String {
+    fn part2(&self) -> String {
         let mut seen_freqs = HashSet::new();
         seen_freqs.insert(0);
 
-        parse(input)
+        self.input
             .iter()
             .cycle()
             .scan(0, |freq, inc| {
