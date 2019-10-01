@@ -1,7 +1,8 @@
 use std::str::FromStr;
 use std::cmp::{min, max, Ordering};
-use std::ops::Add;
 use std::collections::HashMap;
+use std::fmt::Display;
+use termion::color;
 
 #[derive(PartialEq, Eq, Ord, Hash, Debug, Copy, Clone)]
 struct Pt {
@@ -15,19 +16,6 @@ impl Pt {
     fn min() -> Pt { Pt::new(std::u16::MIN, std::u16::MIN) }
 
     fn new(left: u16, top: u16) -> Pt { Pt {left, top} }
-
-    fn left(&self, by: u16) -> Pt {
-        Pt { left: self.left - by, top: self.top }
-    }
-    fn right(&self, by: u16) -> Pt {
-        Pt { left: self.left + by, top: self.top }
-    }
-    fn down(&self, by: u16) -> Pt {
-        Pt { left: self.left, top: self.top + by }
-    }
-    fn up(&self, by: u16) -> Pt {
-        Pt { left: self.left, top: self.top - by }
-    }
 
     fn distance(&self, other: &Pt) -> u16 {
         ((self.left as i32 - other.left as i32).abs() + (self.top as i32 - other.top as i32).abs()) as u16
@@ -59,17 +47,18 @@ impl FromStr for Pt {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
 struct Named {
     name: char,
     coord: Pt
 }
 
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 struct Area {
     top_left: Pt,
     bottom_right: Pt,
-    pts: Vec<Named>
+    names: Vec<Named>
 }
 
 impl Area {
@@ -89,30 +78,92 @@ impl Area {
             name = (name as u8 + 1 as u8) as char;
         });
 
-        Area { top_left, bottom_right, pts: names }
+        Area { top_left, bottom_right, names }
     }
 
-    fn print(&self) -> String {
-        let index = self.pts.iter()
-            .map(|x| {
-                (x.coord, x.name)
-            })
-            .collect::<HashMap<_, _>>();
-
-        let mut surface = String::new();
-        for top in 0..=self.bottom_right.top+1 {
-            for left in 0..=self.bottom_right.left+1 {
-
-                let pt = Pt { left, top };
-                let name = index.get(&pt).unwrap_or(&'.');
-
-                surface = surface.add(&name.to_string());
-            }
-            surface = surface.add("\n");
+    fn analyze(&self) -> AreaAnalysis {
+        let mut name_analysis= HashMap::new();
+        for n in self.names.iter() {
+            name_analysis.insert(n, NamedAnalysis { infinite: false, area: 0 });
         }
-        surface
-    }
+        let mut pt_analysis = HashMap::new();
+        for top in self.top_left.top..=self.bottom_right.top {
+            for left in self.top_left.left..=self.bottom_right.left {
+                let coord = Pt { left, top };
+                let is_frontier = top == self.top_left.top || top == self.bottom_right.top || left == self.bottom_right.left || left == self.top_left.left;
+                let mut distances = HashMap::new();
+                let mut shortest = std::u16::MAX;
+                self.names.iter().for_each(|x| {
+                    let distance = x.coord.distance(&coord);
+                    distances.insert(x, distance);
+                    shortest = min(shortest, distance);
+                });
+                let dominating = distances.iter().filter_map(|(name, dist)| {
+                    if *dist == shortest { Some(*name) } else { None }
+                }).collect::<Vec<_>>();
 
+                let dominated = if dominating.len() != 1 { None } else {
+                    let dom = *dominating.first().expect("cannot happen");
+                    let a = name_analysis.get(dom).expect("cannot happen");
+                    let na = NamedAnalysis { infinite: a.infinite || is_frontier, area: a.area + 1 };
+                    name_analysis.insert(dom, na);
+                    Some(dom)
+                };
+
+                pt_analysis.insert(coord, PtAnalysis { is_frontier, distances, dominated });
+            }
+        }
+        AreaAnalysis { area: self, pt_analysis, name_analysis }
+    }
+}
+
+#[derive(Debug)]
+struct NamedAnalysis {
+    infinite: bool,
+    area: u32
+}
+
+struct PtAnalysis<'a> {
+    is_frontier: bool,
+    distances: HashMap<&'a Named, u16>,
+    dominated: Option<&'a Named> // Some when the named origin dominates this coordinate
+}
+struct AreaAnalysis<'a> {
+    area: &'a Area,
+    pt_analysis: HashMap<Pt, PtAnalysis<'a>>,
+    name_analysis: HashMap<&'a Named, NamedAnalysis>,
+}
+
+impl Display for AreaAnalysis<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        for top in self.area.top_left.top..=self.area.bottom_right.top {
+            for left in self.area.top_left.left..=self.area.bottom_right.left {
+                let pt = Pt { left, top };
+                let analysis = self.pt_analysis.get(&pt).expect(&format!("missing pt {:?} in analysis", pt).to_owned());
+                match analysis.dominated {
+                    None => {
+                        if analysis.is_frontier {
+                            write!(f, "{}.", color::Fg(color::Red))?;
+                        } else {
+                            write!(f, "{}.", color::Fg(color::Reset))?;
+                        };
+                    },
+                    Some(p) => {
+                        let dist = analysis.distances.get(p).expect("invalid area");
+                        if analysis.is_frontier {
+                            write!(f, "{}{}", color::Fg(color::Red), p.name)?;
+                        } else if *dist == 0 {
+                            write!(f, "{}{}", color::Fg(color::LightCyan), p.name)?;
+                        } else {
+                            write!(f, "{}{}", color::Fg(color::Cyan), p.name)?;
+                        };
+                    }
+                }
+            }
+            write!(f, "\n{}", color::Fg(color::Reset))?;
+        }
+        Ok(())
+    }
 }
 
 fn parse(input: String) -> Vec<Pt> {
@@ -132,10 +183,22 @@ struct Puzzle6 {
 impl crate::Puzzle for Puzzle6 {
     fn part1(&self) -> String {
         let area = Area::new(&self.coords);
+        let analysis = area.analyze();
 
-        println!("{}", area.print());
+        println!("{}", analysis);
+        let mut finite_areas = analysis.name_analysis.iter()
+            .filter(|(_, a)| !a.infinite)
+            .collect::<Vec<_>>();
 
-        unimplemented!()
+        finite_areas.sort_by_key(|(_, a)| 0-a.area as i32);
+
+
+        finite_areas.iter().for_each(|(name, analysis)| {
+            println!("{:?} -> {:?}", name, analysis)
+        });
+
+        let (_, largest) = finite_areas.first().expect("invalid solution");
+        format!("{}", largest.area)
     }
 
     fn part2(&self) -> String {
