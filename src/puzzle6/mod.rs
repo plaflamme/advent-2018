@@ -81,7 +81,7 @@ impl Area {
         Area { top_left, bottom_right, names }
     }
 
-    fn analyze(&self) -> AreaAnalysis {
+    fn analyze(&self, max_distance: u32) -> AreaAnalysis {
         let mut name_analysis= HashMap::new();
         for n in self.names.iter() {
             name_analysis.insert(n, NamedAnalysis { infinite: false, area: 0 });
@@ -110,7 +110,10 @@ impl Area {
                     Some(dom)
                 };
 
-                pt_analysis.insert(coord, PtAnalysis { is_frontier, distances, dominated });
+                let dist_sum: u32 = distances.values().map(|x| *x as u32).sum();
+                let is_part2_region = dist_sum < max_distance;
+
+                pt_analysis.insert(coord, PtAnalysis { is_frontier, is_part2_region, distances, dominated });
             }
         }
         AreaAnalysis { area: self, pt_analysis, name_analysis }
@@ -125,6 +128,7 @@ struct NamedAnalysis {
 
 struct PtAnalysis<'a> {
     is_frontier: bool,
+    is_part2_region: bool,
     distances: HashMap<&'a Named, u16>,
     dominated: Option<&'a Named> // Some when the named origin dominates this coordinate
 }
@@ -140,24 +144,24 @@ impl Display for AreaAnalysis<'_> {
             for left in self.area.top_left.left..=self.area.bottom_right.left {
                 let pt = Pt { left, top };
                 let analysis = self.pt_analysis.get(&pt).expect(&format!("missing pt {:?} in analysis", pt).to_owned());
-                match analysis.dominated {
-                    None => {
-                        if analysis.is_frontier {
-                            write!(f, "{}.", color::Fg(color::Red))?;
-                        } else {
-                            write!(f, "{}.", color::Fg(color::Reset))?;
-                        };
-                    },
-                    Some(p) => {
-                        let dist = analysis.distances.get(p).expect("invalid area");
-                        if analysis.is_frontier {
-                            write!(f, "{}{}", color::Fg(color::Red), p.name)?;
-                        } else if *dist == 0 {
-                            write!(f, "{}{}", color::Fg(color::LightCyan), p.name)?;
-                        } else {
-                            write!(f, "{}{}", color::Fg(color::Cyan), p.name)?;
-                        };
-                    }
+
+                let is_name = analysis.dominated.map(|x| {
+                    let dist = *analysis.distances.get(x).expect("invalid area");
+                    dist == 0
+                }).unwrap_or(false);
+
+                let symbol = match (analysis.dominated, analysis.is_part2_region) {
+                    (None, true) =>'#',
+                    (None, false) => '.',
+                    (Some(p), true) => if is_name { p.name } else { '#' },
+                    (Some(p), _) => p.name
+                };
+
+                match (analysis.is_frontier, is_name) {
+                    (false, false) => write!(f, "{}{}", color::Fg(color::Cyan), symbol)?,
+                    (false, true) => write!(f, "{}{}", color::Fg(color::LightCyan), symbol)?,
+                    (true, false) => write!(f, "{}{}", color::Fg(color::Red), symbol)?,
+                    (true, true) => write!(f, "{}{}", color::Fg(color::LightRed), symbol)?,
                 }
             }
             write!(f, "\n{}", color::Fg(color::Reset))?;
@@ -183,7 +187,7 @@ struct Puzzle6 {
 impl crate::Puzzle for Puzzle6 {
     fn part1(&self) -> String {
         let area = Area::new(&self.coords);
-        let analysis = area.analyze();
+        let analysis = area.analyze(10000);
 
         println!("{}", analysis);
         let mut finite_areas = analysis.name_analysis.iter()
@@ -202,7 +206,10 @@ impl crate::Puzzle for Puzzle6 {
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let area = Area::new(&self.coords);
+        let analysis = area.analyze(10000);
+
+        analysis.pt_analysis.values().filter(|x| x.is_part2_region).count().to_string()
     }
 }
 
@@ -224,7 +231,7 @@ mod test {
 //        assert_eq!(*Area::new(&Pt { left: 1, top: 1 }).add(&Pt { left: 3, top: 3}), Area { top_left: Pt { left: 1, top: 1}, bottom_right: Pt { left: 3, top: 3} });
 //        assert_eq!(*Area::new(&Pt { left: 1, top: 1 }).add(&Pt { left: 3, top: 3}).add(&Pt { left: 2, top: 4}), Area { top_left: Pt { left: 1, top: 1}, bottom_right: Pt { left: 3, top: 4} });
 
-        let mut area = Area::new(&vec![Pt::new(1,1), Pt::new(1,6), Pt::new(8,3), Pt::new(3,4), Pt::new(5,5), Pt::new(8,9)] );
-        println!("{}", area.print());
+        let area = Area::new(&vec![Pt::new(1,1), Pt::new(1,6), Pt::new(8,3), Pt::new(3,4), Pt::new(5,5), Pt::new(8,9)] );
+        println!("{}", area.analyze(32));
     }
 }
