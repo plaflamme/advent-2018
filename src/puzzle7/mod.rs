@@ -31,6 +31,11 @@ struct Step {
     depends_on: HashSet<char>
 }
 
+struct Solution {
+    sequence: Vec<char>,
+    time: u32
+}
+
 struct Puzzle7 {
     deps: Vec<Dependency>
 }
@@ -46,10 +51,8 @@ impl Puzzle7 {
 
         steps.values().cloned().collect()
     }
-}
 
-impl crate::Puzzle for Puzzle7 {
-    fn part1(&self) -> String {
+    fn solve(&self, workers: u8, cost: u32) -> Solution {
         let mut steps = self.to_steps();
         let mut steps_ran = HashSet::new();
         let mut run_sequence: Vec<char> = Vec::new();
@@ -70,10 +73,47 @@ impl crate::Puzzle for Puzzle7 {
                 });
             println!("{:?}", run_sequence);
         }
-        run_sequence.iter().collect()
+
+        Solution { sequence: run_sequence, time: 0 }
+    }
+}
+
+impl crate::Puzzle for Puzzle7 {
+    fn part1(&self) -> String {
+        self.solve(1, 0).sequence.iter().collect()
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        self.solve(5, 60).time.to_string()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::Puzzle;
+
+    fn example_input() -> Vec<Dependency> {
+        vec![
+            Dependency {step: 'C', before: 'A'},
+            Dependency {step: 'C', before: 'F'},
+            Dependency {step: 'A', before: 'B'},
+            Dependency {step: 'A', before: 'D'},
+            Dependency {step: 'B', before: 'E'},
+            Dependency {step: 'D', before: 'E'},
+            Dependency {step: 'F', before: 'E'}
+        ]
+    }
+
+    #[test]
+    fn test_part1() {
+        assert_eq!(Puzzle7 { deps: example_input() }.part1(), "CABDFE");
+    }
+
+    #[test]
+    fn test_part2() {
+        let solution = Puzzle7 { deps: example_input() }.solve(2, 0);
+        assert_eq!(solution.sequence.iter().collect::<String>(), "CABDFE");
+        assert_eq!(solution.time, 15);
     }
 }
