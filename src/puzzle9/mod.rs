@@ -127,7 +127,11 @@ impl crate::Puzzle for Puzzle9 {
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        // TODO: This problem can probably be solved with math instead of data structures... This is slow.
+        let mut game = Game::new(self.n_players, self.highest_marble * 100);
+        let mut scores = game.play();
+        scores.sort();
+        scores.last().expect("no players").to_string()
     }
 }
 
