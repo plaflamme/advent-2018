@@ -5,6 +5,7 @@ use std::cmp::Reverse;
 use std::fmt::{Display, Formatter, Error};
 use termion::color;
 
+#[derive(PartialEq)]
 enum Turn {
     GameOver,
     NoPoints,
@@ -87,24 +88,24 @@ impl Game {
         Game { current_player: 0, scores: scores, board: board }
     }
 
+    // Rust doesn't have tail call optimization, so this is a loop instead of a recursive call.
     fn play(&mut self) -> Vec<u32> {
-//        println!("[{}] {}", self.current_player+1, self.board);
         self.current_player = (self.current_player + 1) % self.scores.len();
-        match self.board.turn() {
-            Turn::GameOver => self.scores.clone(),
-            Turn::NoPoints => {
-                self.play()
-            },
-            Turn::Points(pts) => {
+        let mut result = self.board.turn();
+        while result != Turn::GameOver {
+            if let Turn::Points(pts) = result {
                 let score = self.scores.get_mut(self.current_player).expect("unexpected missing score");
                 *score = *score + pts;
-                self.play()
             }
+            self.current_player = (self.current_player + 1) % self.scores.len();
+            result = self.board.turn();
         }
+        self.scores.clone()
     }
 }
 
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
+    // 411 players; last marble is worth 71058 points
     let re = Regex::new(r"^(\d+) players; last marble is worth (\d+) points$").unwrap();
     let caps = re.captures(&input).expect("invalid input");
     let n_players = u32::from_str(&caps[1]).expect("invalid number of players");
