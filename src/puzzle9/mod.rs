@@ -1,22 +1,128 @@
 use regex::Regex;
 use std::str::FromStr;
+use std::collections::BinaryHeap;
+use std::cmp::Reverse;
+use std::fmt::{Display, Formatter, Error};
+use termion::color;
+
+enum Turn {
+    GameOver,
+    NoPoints,
+    Points(u32)
+}
+struct Board {
+    current_marble: usize,
+    marbles: Vec<u32>,
+    remaining_marbles: BinaryHeap<Reverse<u32>>
+}
+
+impl Board {
+    fn turn(&mut self) -> Turn {
+        match self.remaining_marbles.pop() {
+            None => Turn::GameOver,
+            Some(Reverse(value)) => {
+                if value % 23 == 0 {
+                    if self.current_marble >= 7 {
+                        self.current_marble = self.current_marble - 7;
+                    } else {
+                        self.current_marble = self.marbles.len() - (7 - self.current_marble); // roll around
+                    }
+                    let score = self.marbles.remove(self.current_marble);
+                    Turn::Points(value + score)
+                }
+                else {
+                    if self.marbles.len() == 1 {
+                        self.current_marble = self.current_marble + 1;
+                    } else {
+                        self.current_marble = self.current_marble + 2;
+                    }
+                    if self.current_marble < self.marbles.len() {
+                        self.marbles.insert(self.current_marble, value);
+                    } else if self.current_marble == self.marbles.len() {
+                        self.marbles.push(value);
+                    } else {
+                        self.current_marble = self.current_marble % self.marbles.len();
+                        self.marbles.insert(self.current_marble, value);
+                    }
+                    Turn::NoPoints
+                }
+            }
+        }
+    }
+}
+
+impl Display for Board {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        for m in 0..self.marbles.len() {
+            if m == self.current_marble {
+                write!(f, "{}({}){}", color::Fg(color::LightCyan), self.marbles[m], color::Fg(color::Reset))?;
+            } else {
+                write!(f, " {} ", self.marbles[m])?;
+            }
+        }
+        Ok(())
+    }
+}
+
+struct Game {
+    current_player: usize,
+    scores: Vec<u32>,
+    board: Board
+}
+
+impl Game {
+
+    fn new(n_players: u32, highest_marble: u32) -> Game {
+        let mut remaining_marbles = BinaryHeap::new();
+        for m in 1..=highest_marble {
+            remaining_marbles.push(Reverse(m));
+        }
+
+        let mut board = Board { current_marble: 0, marbles: vec![0], remaining_marbles };
+
+        let mut scores = Vec::new();
+        (0..n_players).for_each(|_| scores.push(0));
+
+        board.turn(); // play the first turn
+        Game { current_player: 0, scores: scores, board: board }
+    }
+
+    fn play(&mut self) -> Vec<u32> {
+//        println!("[{}] {}", self.current_player+1, self.board);
+        self.current_player = (self.current_player + 1) % self.scores.len();
+        match self.board.turn() {
+            Turn::GameOver => self.scores.clone(),
+            Turn::NoPoints => {
+                self.play()
+            },
+            Turn::Points(pts) => {
+                let score = self.scores.get_mut(self.current_player).expect("unexpected missing score");
+                *score = *score + pts;
+                self.play()
+            }
+        }
+    }
+}
 
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
     let re = Regex::new(r"^(\d+) players; last marble is worth (\d+) points$").unwrap();
     let caps = re.captures(&input).expect("invalid input");
     let n_players = u32::from_str(&caps[1]).expect("invalid number of players");
-    let n_marbles =  u32::from_str(&caps[2]).expect("invalid number of marbles");
+    let highest_marble =  u32::from_str(&caps[2]).expect("invalid number of marbles");
 
-    Box::new(Puzzle9 { n_players, n_marbles })
+    Box::new(Puzzle9 { n_players, highest_marble })
 }
 struct Puzzle9 {
     n_players: u32,
-    n_marbles: u32
+    highest_marble: u32
 }
 
 impl crate::Puzzle for Puzzle9 {
     fn part1(&self) -> String {
-        unimplemented!()
+        let mut game = Game::new(self.n_players, self.highest_marble);
+        let mut scores = game.play();
+        scores.sort();
+        scores.last().expect("no players").to_string()
     }
 
     fn part2(&self) -> String {
@@ -31,6 +137,11 @@ mod test {
 
     #[test]
     fn part1() {
-        assert_eq!(Puzzle9 { n_players: 9, n_marbles: 25 }.part1(), "33");
+        assert_eq!(Puzzle9 { n_players: 9, highest_marble: 25 }.part1(), "32");
+        assert_eq!(Puzzle9 { n_players: 10, highest_marble: 1618 }.part1(), "8317");
+        assert_eq!(Puzzle9 { n_players: 13, highest_marble: 7999 }.part1(), "146373");
+        assert_eq!(Puzzle9 { n_players: 17, highest_marble: 1104 }.part1(), "2764");
+        assert_eq!(Puzzle9 { n_players: 21, highest_marble: 6111 }.part1(), "54718");
+        assert_eq!(Puzzle9 { n_players: 30, highest_marble: 5807 }.part1(), "37305");
     }
 }
