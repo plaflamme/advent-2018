@@ -1,6 +1,6 @@
 use regex::Regex;
 use std::str::FromStr;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, VecDeque};
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter, Error};
 use termion::color;
@@ -13,7 +13,7 @@ enum Turn {
 }
 struct Board {
     current_marble: usize,
-    marbles: Vec<u32>,
+    marbles: VecDeque<u32>,
     remaining_marbles: BinaryHeap<Reverse<u32>>
 }
 
@@ -28,7 +28,7 @@ impl Board {
                     } else {
                         self.current_marble = self.marbles.len() - (7 - self.current_marble); // roll around
                     }
-                    let score = self.marbles.remove(self.current_marble);
+                    let score = self.marbles.remove(self.current_marble).expect("oops");
                     Turn::Points(value + score)
                 }
                 else {
@@ -40,7 +40,7 @@ impl Board {
                     if self.current_marble < self.marbles.len() {
                         self.marbles.insert(self.current_marble, value);
                     } else if self.current_marble == self.marbles.len() {
-                        self.marbles.push(value);
+                        self.marbles.push_back(value);
                     } else {
                         self.current_marble = self.current_marble % self.marbles.len();
                         self.marbles.insert(self.current_marble, value);
@@ -79,7 +79,7 @@ impl Game {
             remaining_marbles.push(Reverse(m));
         }
 
-        let mut board = Board { current_marble: 0, marbles: vec![0], remaining_marbles };
+        let mut board = Board { current_marble: 0, marbles: VecDeque::from(vec![0]), remaining_marbles };
 
         let mut scores = Vec::new();
         (0..n_players).for_each(|_| scores.push(0));
