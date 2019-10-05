@@ -40,6 +40,23 @@ impl Node {
         Node { metadata, children }
     }
 
+    fn value(&self) -> u32 {
+        if self.children.len() == 0 {
+            self.metadata.iter().sum()
+        } else {
+            self.metadata.iter()
+                .map(|m| {
+                    let m_size = *m as usize;
+                    if m_size == 0 || m_size > self.children.len() {
+                        0
+                    } else {
+                        self.children[m_size - 1].value()
+                    }
+                })
+                .sum()
+        }
+    }
+
     fn iter(&self) -> NodeIterator {
         let a = std::iter::once(self);
         let more = self.children.iter().flat_map(|x| x.iter());
@@ -69,7 +86,8 @@ impl crate::Puzzle for Puzzle8 {
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let root = Node::new(&mut self.nodes.clone());
+        root.value().to_string()
     }
 }
 
@@ -88,5 +106,7 @@ mod test {
     }
 
     #[test]
-    fn test_part2() { unimplemented!() }
+    fn test_part2() {
+        assert_eq!(example_input().part2(), "66");
+    }
 }
