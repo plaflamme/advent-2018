@@ -1,6 +1,6 @@
 use regex::Regex;
 use std::str::FromStr;
-use std::collections::{BinaryHeap, VecDeque};
+use std::collections::{BinaryHeap, LinkedList};
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter, Error};
 use termion::color;
@@ -13,11 +13,25 @@ enum Turn {
 }
 struct Board {
     current_marble: usize,
-    marbles: VecDeque<u32>,
+    marbles: LinkedList<u32>,
     remaining_marbles: BinaryHeap<Reverse<u32>>
 }
 
 impl Board {
+
+    fn remove_current(&mut self) -> u32 {
+        let mut tail = self.marbles.split_off(self.current_marble);
+        let value = tail.pop_front();
+        self.marbles.append(&mut tail);
+        value.expect("unexpected missing marble.")
+    }
+
+    fn insert(&mut self, value: u32) {
+        let mut tail = self.marbles.split_off(self.current_marble);
+        tail.push_front(value);
+        self.marbles.append(&mut tail);
+    }
+
     fn turn(&mut self) -> Turn {
         match self.remaining_marbles.pop() {
             None => Turn::GameOver,
@@ -28,7 +42,7 @@ impl Board {
                     } else {
                         self.current_marble = self.marbles.len() - (7 - self.current_marble); // roll around
                     }
-                    let score = self.marbles.remove(self.current_marble).expect("oops");
+                    let score = self.remove_current();
                     Turn::Points(value + score)
                 }
                 else {
@@ -38,12 +52,13 @@ impl Board {
                         self.current_marble = self.current_marble + 2;
                     }
                     if self.current_marble < self.marbles.len() {
-                        self.marbles.insert(self.current_marble, value);
+                        self.insert(value);
                     } else if self.current_marble == self.marbles.len() {
                         self.marbles.push_back(value);
                     } else {
                         self.current_marble = self.current_marble % self.marbles.len();
-                        self.marbles.insert(self.current_marble, value);
+                        self.insert(value);
+
                     }
                     Turn::NoPoints
                 }
@@ -54,13 +69,15 @@ impl Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        for m in 0..self.marbles.len() {
-            if m == self.current_marble {
-                write!(f, "{}({}){}", color::Fg(color::LightCyan), self.marbles[m], color::Fg(color::Reset))?;
-            } else {
-                write!(f, " {} ", self.marbles[m])?;
-            }
-        }
+        self.marbles.iter()
+            .enumerate()
+            .for_each(|(index, value)| {
+                if index == self.current_marble {
+                    write!(f, "{}({}){}", color::Fg(color::LightCyan), value, color::Fg(color::Reset));
+                } else {
+                    write!(f, " {} ", value);
+                }
+            });
         Ok(())
     }
 }
@@ -79,7 +96,9 @@ impl Game {
             remaining_marbles.push(Reverse(m));
         }
 
-        let mut board = Board { current_marble: 0, marbles: VecDeque::from(vec![0]), remaining_marbles };
+        let mut marbles = LinkedList::new();
+        marbles.push_back(0);
+        let mut board = Board { current_marble: 0, marbles, remaining_marbles };
 
         let mut scores = Vec::new();
         (0..n_players).for_each(|_| scores.push(0));
