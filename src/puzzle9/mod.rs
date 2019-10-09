@@ -1,6 +1,6 @@
 use regex::Regex;
 use std::str::FromStr;
-use std::collections::{BinaryHeap, LinkedList};
+use std::collections::BinaryHeap;
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter, Error};
 use termion::color;
@@ -11,25 +11,59 @@ enum Turn {
     NoPoints,
     Points(u32)
 }
+
+#[derive(Clone, Debug)]
+struct Marble {
+    value: u32, // the marble's value
+    idx: usize, // vector index of this marble
+    next: usize, // vector index of the next marble
+    prev: usize // vector index of the previous
+}
+
 struct Board {
-    current_marble: usize,
-    marbles: LinkedList<u32>,
+    current_marble: Marble,
+    marbles: Vec<Marble>,
     remaining_marbles: BinaryHeap<Reverse<u32>>
 }
 
 impl Board {
 
     fn remove_current(&mut self) -> u32 {
-        let mut tail = self.marbles.split_off(self.current_marble);
-        let value = tail.pop_front();
-        self.marbles.append(&mut tail);
-        value.expect("unexpected missing marble.")
+        let value = self.current_marble.value;
+
+        {
+            let mut prev = self.marbles.get_mut(self.current_marble.prev).expect("no previous marble");
+            prev.next = self.current_marble.next;
+        }
+        {
+            let mut next = self.marbles.get_mut(self.current_marble.next).expect("no next marble");
+            next.prev = self.current_marble.prev;
+            self.current_marble = next.clone();
+        }
+
+
+        value
     }
 
     fn insert(&mut self, value: u32) {
-        let mut tail = self.marbles.split_off(self.current_marble);
-        tail.push_front(value);
-        self.marbles.append(&mut tail);
+        let new_idx = self.marbles.len(); // 1
+        let new_marble = Marble { value, idx: new_idx, prev: self.current_marble.prev, next: self.current_marble.idx };
+        self.marbles.push(new_marble.clone());
+
+        {
+            let mut prev = self.marbles.get_mut(self.current_marble.prev).expect("no previous marble");
+            if new_idx == 1 {
+                prev.prev = new_idx;
+            }
+            prev.next = new_idx; // 1
+        }
+
+        {
+            let mut next = self.marbles.get_mut(self.current_marble.idx).expect("no previous marble");
+            next.prev = new_idx;
+        }
+
+        self.current_marble = new_marble.clone();
     }
 
     fn turn(&mut self) -> Turn {
@@ -37,29 +71,17 @@ impl Board {
             None => Turn::GameOver,
             Some(Reverse(value)) => {
                 if value % 23 == 0 {
-                    if self.current_marble >= 7 {
-                        self.current_marble = self.current_marble - 7;
-                    } else {
-                        self.current_marble = self.marbles.len() - (7 - self.current_marble); // roll around
+                    for _ in 0..7 {
+                        self.current_marble = self.marbles.get(self.current_marble.prev).expect("no more marbles").clone();
                     }
                     let score = self.remove_current();
                     Turn::Points(value + score)
                 }
                 else {
-                    if self.marbles.len() == 1 {
-                        self.current_marble = self.current_marble + 1;
-                    } else {
-                        self.current_marble = self.current_marble + 2;
+                    for _ in 0..2 {
+                        self.current_marble = self.marbles.get(self.current_marble.next).expect("no more marbles").clone();
                     }
-                    if self.current_marble < self.marbles.len() {
-                        self.insert(value);
-                    } else if self.current_marble == self.marbles.len() {
-                        self.marbles.push_back(value);
-                    } else {
-                        self.current_marble = self.current_marble % self.marbles.len();
-                        self.insert(value);
-
-                    }
+                    self.insert(value);
                     Turn::NoPoints
                 }
             }
@@ -69,15 +91,17 @@ impl Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        self.marbles.iter()
-            .enumerate()
-            .for_each(|(index, value)| {
-                if index == self.current_marble {
-                    write!(f, "{}({}){}", color::Fg(color::LightCyan), value, color::Fg(color::Reset));
-                } else {
-                    write!(f, " {} ", value);
-                }
-            });
+        let mut index = 0;
+        while {
+            let mut marble = self.marbles.get(index).expect("no marbles");
+            if index == self.current_marble.idx {
+                write!(f, "{}({}){}", color::Fg(color::LightCyan), marble.value, color::Fg(color::Reset));
+            } else {
+                write!(f, " {} ", marble.value);
+            }
+            index = marble.next;
+            index != 0 as usize
+        } {}
         Ok(())
     }
 }
@@ -96,9 +120,10 @@ impl Game {
             remaining_marbles.push(Reverse(m));
         }
 
-        let mut marbles = LinkedList::new();
-        marbles.push_back(0);
-        let mut board = Board { current_marble: 0, marbles, remaining_marbles };
+        let mut marbles = Vec::new();
+        let first_marble = Marble { value: 0, idx: 0, next: 0, prev: 0 };
+        marbles.push(first_marble.clone());
+        let mut board = Board { current_marble: first_marble, marbles, remaining_marbles };
 
         let mut scores = Vec::new();
         (0..n_players).for_each(|_| scores.push(0));
@@ -109,9 +134,13 @@ impl Game {
 
     // Rust doesn't have tail call optimization, so this is a loop instead of a recursive call.
     fn play(&mut self) -> Vec<u32> {
+//        println!("{}", self.board);
+//        println!("{:?}", self.board.marbles);
         self.current_player = (self.current_player + 1) % self.scores.len();
         let mut result = self.board.turn();
         while result != Turn::GameOver {
+//            println!("{}", self.board);
+//            println!("{:?}", self.board.marbles);
             if let Turn::Points(pts) = result {
                 let score = self.scores.get_mut(self.current_player).expect("unexpected missing score");
                 *score = *score + pts;
