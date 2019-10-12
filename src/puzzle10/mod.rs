@@ -35,6 +35,10 @@ impl Char {
         self.pt.x += self.velocity.x;
         self.pt.y += self.velocity.y;
     }
+    fn unstep(&mut self) {
+        self.pt.x -= self.velocity.x;
+        self.pt.y -= self.velocity.y;
+    }
 }
 
 impl FromStr for Char {
@@ -74,6 +78,36 @@ impl Banner {
 
     fn step(&mut self) {
         self.chars.iter_mut().for_each(|c| c.step());
+        let mut top_left = Pt::max();
+        let mut bottom_right = Pt::min();
+        self.chars.iter().for_each(|c| {
+            let pt = &c.pt;
+            top_left.y = min(top_left.y, pt.y);
+            top_left.x = min(top_left.x, pt.x);
+            bottom_right.y = max(bottom_right.y, pt.y);
+            bottom_right.x = max(bottom_right.x, pt.x);
+        });
+        self.top_left = top_left;
+        self.bottom_right = bottom_right;
+    }
+
+    fn unstep(&mut self) {
+        self.chars.iter_mut().for_each(|c| c.unstep());
+        let mut top_left = Pt::max();
+        let mut bottom_right = Pt::min();
+        self.chars.iter().for_each(|c| {
+            let pt = &c.pt;
+            top_left.y = min(top_left.y, pt.y);
+            top_left.x = min(top_left.x, pt.x);
+            bottom_right.y = max(bottom_right.y, pt.y);
+            bottom_right.x = max(bottom_right.x, pt.x);
+        });
+        self.top_left = top_left;
+        self.bottom_right = bottom_right;
+    }
+
+    fn area(&self) -> u64 {
+        ((self.top_left.x - self.bottom_right.x).abs() as u64 * (self.top_left.y - self.bottom_right.y).abs() as u64)
     }
 }
 
@@ -113,7 +147,17 @@ struct Puzzle10 {
 
 impl crate::Puzzle for Puzzle10 {
     fn part1(&self) -> String {
-        unimplemented!()
+        let mut banner = Banner::new(&self.chars);
+        let mut area = banner.area();
+        let mut new_area = area;
+        while new_area <= area {
+            banner.step();
+            area = new_area;
+            new_area = banner.area();
+        }
+        banner.unstep();
+
+        format!("\n{}", banner)
     }
 
     fn part2(&self) -> String {
