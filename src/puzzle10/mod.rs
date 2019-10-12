@@ -1,6 +1,5 @@
 use std::str::FromStr;
 use regex::Regex;
-use crate::Puzzle;
 
 #[derive(Debug, PartialEq, Eq)]
 struct Pt {
@@ -18,6 +17,13 @@ struct Velocity {
 struct Char {
     pt: Pt,
     velocity: Velocity
+}
+
+impl Char {
+    fn step(&mut self) {
+        self.pt.x += self.velocity.x;
+        self.pt.y += self.velocity.y;
+    }
 }
 
 impl FromStr for Char {
@@ -98,6 +104,13 @@ position=<-3,  6> velocity=< 2, -1>
         assert_eq!(31, puzzle.chars.len());
         assert_eq!(Some(&Char{ pt: Pt{x:9,y:1}, velocity: Velocity{x:0,y:2}}), puzzle.chars.iter().next());
         assert_eq!(Some(&Char{ pt: Pt{x:-3,y:6}, velocity: Velocity{x:2,y:-1}}), puzzle.chars.iter().rev().next());
+    }
+
+    #[test]
+    fn step() {
+        let mut c = Char{ pt: Pt{x:-3,y:6}, velocity: Velocity{x:2,y:-1}};
+        c.step();
+        assert_eq!(Char{ pt: Pt { x: -1 , y: 5 }, velocity: Velocity { x: 2, y: -1 } }, c);
     }
 
     #[test]
