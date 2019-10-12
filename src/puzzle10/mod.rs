@@ -109,6 +109,21 @@ impl Banner {
     fn area(&self) -> u64 {
         ((self.top_left.x - self.bottom_right.x).abs() as u64 * (self.top_left.y - self.bottom_right.y).abs() as u64)
     }
+
+    fn solve(&mut self) -> Solution {
+        let mut seconds = 0;
+        let mut area = self.area();
+        let mut new_area = area;
+        while new_area <= area {
+            self.step();
+            seconds += 1;
+            area = new_area;
+            new_area = self.area();
+        }
+        self.unstep();
+        seconds -= 1;
+        Solution { msg: format!("{}", self), seconds }
+    }
 }
 
 impl Display for Banner {
@@ -132,6 +147,11 @@ impl Display for Banner {
     }
 }
 
+struct Solution {
+    msg: String,
+    seconds: u16
+}
+
 fn parse(input: String) -> Puzzle10 {
     let chars = input.lines().map(|line| Char::from_str(line).expect("invalid line")).collect::<Vec<_>>();
     Puzzle10 { chars }
@@ -148,20 +168,14 @@ struct Puzzle10 {
 impl crate::Puzzle for Puzzle10 {
     fn part1(&self) -> String {
         let mut banner = Banner::new(&self.chars);
-        let mut area = banner.area();
-        let mut new_area = area;
-        while new_area <= area {
-            banner.step();
-            area = new_area;
-            new_area = banner.area();
-        }
-        banner.unstep();
-
-        format!("\n{}", banner)
+        let solution = banner.solve();
+        format!("\n{}", solution.msg)
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let mut banner = Banner::new(&self.chars);
+        let solution = banner.solve();
+        solution.seconds.to_string()
     }
 }
 
@@ -202,22 +216,14 @@ position=<14,  7> velocity=<-2,  0>
 position=<-3,  6> velocity=< 2, -1>
 ";
 
-    const HI: &'static str = "......................
-......................
-......................
-......................
-......#...#..###......
-......#...#...#.......
-......#...#...#.......
-......#####...#.......
-......#...#...#.......
-......#...#...#.......
-......#...#...#.......
-......#...#..###......
-......................
-......................
-......................
-......................
+    const HI: &'static str = "#...#..###
+#...#...#.
+#...#...#.
+#####...#.
+#...#...#.
+#...#...#.
+#...#...#.
+#...#..###
 ";
 
     #[test]
@@ -251,14 +257,15 @@ position=<-3,  6> velocity=< 2, -1>
     #[test]
     fn part1() {
         let mut banner = Banner::new(&parse(EXAMPLE.to_string()).chars);
-        banner.step();
-        banner.step();
-        banner.step();
-        assert_eq!(HI, format!("{}", banner));
+        let solution = banner.solve();
+        assert_eq!(HI, solution.msg);
     }
 
     #[test]
     fn part2() {
-        unimplemented!()
+        let mut banner = Banner::new(&parse(EXAMPLE.to_string()).chars);
+        let solution = banner.solve();
+        assert_eq!(3, solution.seconds);
     }
+
 }
