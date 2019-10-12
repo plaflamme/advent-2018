@@ -1,19 +1,30 @@
 use std::str::FromStr;
 use regex::Regex;
+use std::cmp::{min, max};
+use std::fmt::{Display, Formatter, Error};
+use std::collections::HashSet;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct Pt {
     x: i32,
     y: i32
 }
 
-#[derive(Debug, PartialEq, Eq)]
+impl Pt {
+    fn new(x: i32, y: i32) -> Pt {
+        Pt{x,y}
+    }
+    fn max() -> Pt { Pt::new(std::i32::MAX, std::i32::MAX) }
+    fn min() -> Pt { Pt::new(std::i32::MIN, std::i32::MIN) }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Velocity {
     x: i32,
     y: i32
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Char {
     pt: Pt,
     velocity: Velocity
@@ -35,6 +46,55 @@ impl FromStr for Char {
         let pt = Pt { x: i32::from_str(&caps[1])?, y: i32::from_str(&caps[2])? };
         let velocity = Velocity { x: i32::from_str(&caps[3])?, y: i32::from_str(&caps[4])? };
         Ok(Char { pt, velocity })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Banner {
+    top_left: Pt,
+    bottom_right: Pt,
+    chars: Vec<Char>
+}
+
+impl Banner {
+
+    fn new(chars: &Vec<Char>) -> Banner {
+        let mut top_left = Pt::max();
+        let mut bottom_right = Pt::min();
+
+        chars.iter().for_each(|c| {
+            let pt = &c.pt;
+            top_left.y = min(top_left.y, pt.y);
+            top_left.x = min(top_left.x, pt.x);
+            bottom_right.y = max(bottom_right.y, pt.y);
+            bottom_right.x = max(bottom_right.x, pt.x);
+        });
+        Banner { top_left, bottom_right, chars: chars.clone()}
+    }
+
+    fn step(&mut self) {
+        self.chars.iter_mut().for_each(|c| c.step());
+    }
+}
+
+impl Display for Banner {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let pt_index = self.chars.iter().map(|c| {
+            &c.pt
+        }).collect::<HashSet<_>>();
+
+        for y in self.top_left.y..=self.bottom_right.y {
+            for x in self.top_left.x..=self.bottom_right.x {
+                let pt = Pt { x, y };
+                let mut c = ".";
+                if pt_index.contains(&pt) {
+                    c = "#"
+                }
+                write!(f, "{}", c)?;
+            }
+            write!(f, "\n")?;
+        }
+        Ok(())
     }
 }
 
@@ -98,6 +158,24 @@ position=<14,  7> velocity=<-2,  0>
 position=<-3,  6> velocity=< 2, -1>
 ";
 
+    const HI: &'static str = "......................
+......................
+......................
+......................
+......#...#..###......
+......#...#...#.......
+......#...#...#.......
+......#####...#.......
+......#...#...#.......
+......#...#...#.......
+......#...#...#.......
+......#...#..###......
+......................
+......................
+......................
+......................
+";
+
     #[test]
     fn parser() {
         let puzzle = parse(EXAMPLE.to_string());
@@ -114,8 +192,25 @@ position=<-3,  6> velocity=< 2, -1>
     }
 
     #[test]
+    fn banner() {
+        let chars = vec![Char{ pt: Pt{x:9,y:1}, velocity: Velocity{x:0,y:2}}, Char{ pt: Pt{x:-3,y:6}, velocity: Velocity{x:2,y:-1}}];
+        let mut banner = Banner::new(&chars);
+        banner.step();
+
+        let mut moved = vec![Char{ pt: Pt{x:9,y:1}, velocity: Velocity{x:0,y:2}}, Char{ pt: Pt{x:-3,y:6}, velocity: Velocity{x:2,y:-1}}];
+        moved.iter_mut().for_each(|c| c.step());
+        let moved = Banner::new(&moved);
+
+        assert_eq!(moved.chars, banner.chars);
+    }
+
+    #[test]
     fn part1() {
-        unimplemented!()
+        let mut banner = Banner::new(&parse(EXAMPLE.to_string()).chars);
+        banner.step();
+        banner.step();
+        banner.step();
+        assert_eq!(HI, format!("{}", banner));
     }
 
     #[test]
