@@ -11,4 +11,5 @@ structopt = "0.2.10"
 regex = "1"
 bit-set = "0.5.1"
 termion = "1.5.3"
+ixlist = "0.1.0"
 
