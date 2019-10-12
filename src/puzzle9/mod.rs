@@ -93,11 +93,11 @@ impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         let mut index = 0;
         while {
-            let mut marble = self.marbles.get(index).expect("no marbles");
+            let marble = self.marbles.get(index).expect("no marbles");
             if index == self.current_marble.idx {
-                write!(f, "{}({}){}", color::Fg(color::LightCyan), marble.value, color::Fg(color::Reset));
+                write!(f, "{}({}){}", color::Fg(color::LightCyan), marble.value, color::Fg(color::Reset))?;
             } else {
-                write!(f, " {} ", marble.value);
+                write!(f, " {} ", marble.value)?;
             }
             index = marble.next;
             index != 0 as usize
