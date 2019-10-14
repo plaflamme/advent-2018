@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Error};
+use cached::cached;
 
 fn power_level(x: u16, y: u16, serial_number: u16) -> i32 {
     let rack_id = x as i32 + 10;
@@ -12,6 +12,40 @@ fn power_level(x: u16, y: u16, serial_number: u16) -> i32 {
     power_level
 }
 
+cached! {
+    PWR_LEVELS;
+    fn tile_power_level(x: u16, y: u16, side: u16, serial_number: u16) -> i32 = {
+        if side == 1 {
+            power_level(x, y, serial_number)
+        } else {
+            let mut squares = Vec::new();
+            if side % 2 == 0 {
+                let half = side / 2;
+                squares.push((x,y,half));
+                squares.push((x,y+half,half));
+                squares.push((x+half,y,half));
+                squares.push((x+half,y+half,half));
+            } else {
+                let part = side - 1;
+                for i in 0..=part {
+                    squares.push((x + part, y + i, 1));
+                }
+                for i in 0..part {
+                    squares.push((x + i, y + part, 1));
+                }
+
+                squares.push((x,y,part));
+            }
+
+            let mut power = 0;
+            for (x,y,side) in squares {
+                power += tile_power_level(x,y,side,serial_number);
+            }
+            power
+        }
+    }
+}
+
 #[derive(Hash, PartialEq, Eq, Debug, Clone)]
 struct Pt {
     x: u16,
@@ -19,28 +53,16 @@ struct Pt {
 }
 
 struct Grid {
-    fuel_cells: HashMap<Pt, i32>
+    serial_number: u16
 }
 
 impl Grid {
     fn new(serial_number: u16) -> Self {
-        let mut fuel_cells = HashMap::new();
-        for y in 1..=300 {
-            for x in 1..=300 {
-                fuel_cells.insert(Pt {x,y}, power_level(x,y,serial_number));
-            }
-        }
-        Grid { fuel_cells }
+        Grid { serial_number }
     }
 
     fn tile_power(&self, pt: &Pt, side: u16) -> i32 {
-        let mut power = 0;
-        for y in pt.y..(pt.y + side) {
-            for x in pt.x..(pt.x + side) {
-                power += *self.fuel_cells.get(&Pt{x,y} ).expect("invalid cell coordinate");
-            }
-        }
-        power
+        tile_power_level(pt.x, pt.y, side, self.serial_number)
     }
 
     fn iter(&self, side: u16) -> Tile {
@@ -59,7 +81,15 @@ impl Grid {
         let mut max_power = -1000000;
         let mut winning_pt: Pt = Pt {x:1,y:1};
         let mut winning_side = 1;
-        for side in (1..=300) {
+        for side in 1..=300 {
+            use cached::Cached;
+            {
+                let cache = PWR_LEVELS.lock().unwrap();
+                println!("size -> {:?}", cache.cache_size());
+                println!("hits -> {:?}", cache.cache_hits().unwrap());
+                println!("misses -> {:?}", cache.cache_misses().unwrap());
+            }
+
             let pt = self.solve(side);
             let power = self.tile_power(&pt, side);
             if power > max_power {
@@ -70,18 +100,6 @@ impl Grid {
             }
         }
         (winning_pt, winning_side)
-    }
-}
-
-impl Display for Grid {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        for y in 1..50 {
-            for x in 1..50 {
-                write!(f, "{:2} ", self.fuel_cells.get(&Pt{x,y}).expect("fudge"))?;
-            }
-            write!(f, "\n")?;
-        }
-        Ok(())
     }
 }
 
@@ -161,7 +179,6 @@ mod test {
     #[test]
     fn part2() {
         let grid = Grid::new(18);
-        println!("{}", grid);
         let (max_tile, side) = grid.solve_all();
         assert_eq!(16, side);
         assert_eq!(Pt{x:90,y:269}, max_tile);
