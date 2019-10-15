@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use std::collections::HashMap;
 use cached::cached;
 
 fn power_level(x: u16, y: u16, serial_number: u16) -> i32 {
