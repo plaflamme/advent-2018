@@ -84,15 +84,23 @@ impl crate::Puzzle for Puzzle12 {
     fn part2(&self) -> String {
         let mut gen = Generation::new(&self.initial_state);
         let rules = &self.growing_rules();
-        for _ in 0..(50000000000 as u64) {
-            gen = gen.grow(rules);
+        loop {
+            let next_gen = gen.grow(rules);
+            let next_shifted = next_gen.state.iter().map(|x| x - next_gen.min).collect::<HashSet<_>>();
+            let current_shifted = gen.state.iter().map(|x| x - gen.min).collect::<HashSet<_>>();
+            if next_shifted == current_shifted {
+                break;
+            }
+            gen = next_gen;
         }
-        gen.plant_containing_pots().to_string()
+
+        let remaining_gens = (50000000000 as u64) - gen.gen;
+        gen.state.iter().map(|x| (*x as u64) + remaining_gens).sum::<u64>().to_string()
     }
 }
 
 struct Generation {
-    gen: u16,
+    gen: u64,
     min: i32,
     max: i32,
     state: HashSet<i32>
