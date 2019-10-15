@@ -36,7 +36,7 @@ impl Rule {
             }
         }).collect::<Vec<_>>();
 
-        Rule { pattern: pattern.clone(), produces_plant}
+        Rule { pattern: pattern.clone(), produces_plant }
     }
 }
 
@@ -72,9 +72,11 @@ impl Puzzle12 {
 impl crate::Puzzle for Puzzle12 {
     fn part1(&self) -> String {
         let mut gen = Generation::new(&self.initial_state);
+        println!("{}", gen);
         let rules = &self.growing_rules();
         for _ in 0..20 {
             gen = gen.grow(rules);
+            println!("{}", gen);
         }
         gen.plant_containing_pots().to_string()
     }
@@ -89,115 +91,69 @@ impl crate::Puzzle for Puzzle12 {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
-struct Pot {
-    index: i16,
-    has_plant: bool
-}
-
 struct Generation {
     gen: u16,
-    state: Vec<Pot>
+    min: i32,
+    max: i32,
+    state: HashSet<i32>
 }
 
 impl Generation {
 
     fn new(state: &str) -> Self {
-        let s = state.chars().enumerate().map(|(idx,c)| {
-            let has_plant = match c {
-                '.' => false,
-                '#' => true,
-                _ => panic!("invalid pattern")
-            };
-
-            Pot { index: idx as i16, has_plant }
-        }).collect::<Vec<_>>();
-
-        Generation { gen: 0, state : s }
+        let s = state.chars().enumerate()
+            .filter_map(|(idx,c)| {
+                match c {
+                    '.' => None,
+                    '#' => Some(idx as i32),
+                    _ => panic!("invalid pattern")
+                }
+            })
+            .collect::<HashSet<_>>();
+        let mut min = std::i32::MAX;
+        let mut max = std::i32::MIN;
+        s.iter().for_each(|v| {
+            min = std::cmp::min(min, *v);
+            max = std::cmp::max(max, *v);
+        });
+        Generation { gen: 0, min, max, state : s }
     }
 
-    fn grow(&self, rules: &HashSet<BitSet>) -> Generation {
-        let current_state: HashSet<i32> = HashSet::new();
-        let mut new_state = HashSet;
+    fn grow(&self, rules: &HashSet<Vec<bool>>) -> Generation {
+        let mut min = std::i32::MAX;
+        let mut max = std::i32::MIN;
+        let mut new_state = HashSet::new();
 
-        current_state.iter()
-            .map(|plant_idx| {
-                let mut plant_state = Vec::new();
-                for other_idx in (plant_idx-2)..=(plant_idx+2) {
-                    plant_state.push(current_state.contains(other_idx));
-                }
-                rules.contains()
-            })
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        let mut gen_state = self.state.clone();
-        if let Some(first) = self.state.iter().next() {
-            gen_state.insert(0, Pot { index: first.index - 1, has_plant: false });
-            gen_state.insert(0, Pot { index: first.index - 2, has_plant: false });
+        for plant_idx in (self.min-2)..=(self.max+2) {
+            let mut plant_state = Vec::new();
+            for other_idx in (plant_idx - 2)..=(plant_idx + 2) {
+                plant_state.push(self.state.contains(&other_idx));
+            }
+            if rules.contains(&plant_state) {
+                min = std::cmp::min(min, plant_idx);
+                max = std::cmp::max(max, plant_idx);
+                new_state.insert(plant_idx);
+            }
         }
-        if let Some(last) = self.state.iter().rev().next() {
-            gen_state.push(Pot { index: last.index + 1, has_plant: false });
-            gen_state.push(Pot { index: last.index + 2, has_plant: false });
-        }
-
-        let next_gen = gen_state.iter()
-            .enumerate()
-            .map(|(idx, pot)| {
-                let start = idx as i16 - 2;
-                let end = idx as i16 + 2;
-                let mut state = Vec::new();
-                for other in start..=end {
-                    if other < 0 {
-                        state.push(false)
-                    } else {
-                        match gen_state.get(other as usize) {
-                            None => state.push(false),
-                            Some(s) => state.push(s.has_plant)
-                        }
-                    }
-                }
-                (pot, state)
-            })
-            .map(|(pot, pot_state)| {
-                if rules.contains(&pot_state) {
-                    Pot { index: pot.index, has_plant: true }
-                } else {
-                    Pot { index: pot.index, has_plant: false }
-                }
-            })
-            .skip_while(|pot| !pot.has_plant)
-            .collect::<Vec<_>>();
-
-        Generation { gen: self.gen + 1, state: next_gen }
+        Generation { gen: self.gen + 1, min, max, state: new_state }
     }
 
-    fn plant_containing_pots(&self) -> i16 {
-        self.state.iter().filter_map(|pot| if pot.has_plant { Some(pot.index) } else { None }).sum()
+    fn plant_containing_pots(&self) -> i32 {
+        self.state.iter().sum()
     }
 }
 
 impl Display for Generation {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let plants: String = self.state.iter().map(|p| {
-            match p.has_plant {
+        write!(f, "{} ([{},{}]): ", self.gen, self.min, self.max)?;
+        for idx in self.min..=self.max {
+            let char = match self.state.contains(&idx) {
                 true => '#',
                 false => '.'
-            }
-        }).collect();
-        write!(f, "{}: {}", self.gen, plants)
+            };
+            write!(f, "{}", char)?;
+        }
+        Ok(())
     }
 }
 
@@ -251,11 +207,18 @@ mod test {
 
     #[test]
     fn test_grow() {
+        fn assert_gen(s: &Vec<i32>, g: &Generation) {
+            assert_eq!(s.iter().map(|x|*x).collect::<HashSet<i32>>(), g.state);
+        }
         let pzl = parse(EXAMPLE.to_owned());
         let gen0 = Generation::new(&pzl.initial_state);
+        assert_gen(&vec![0, 3, 5, 8, 9, 16, 17, 18, 22, 23, 24], &gen0);
+
         let grew = gen0.grow(&pzl.growing_rules());
-        let actual = grew.state.iter().filter_map(|pot| if pot.has_plant { Some(pot.index) } else { None }).collect::<Vec<_>>();
-        assert_eq!(vec![0, 4, 9, 15, 18, 21, 24], actual);
+        assert_gen(&vec![0, 4, 9, 15, 18, 21, 24], &grew);
+
+        let grew = grew.grow(&pzl.growing_rules());
+        assert_gen(&vec![0, 1, 4, 5, 9, 10, 15, 18, 21, 24, 25], &grew);
     }
 
     #[test]
