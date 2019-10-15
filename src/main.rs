@@ -21,8 +21,8 @@ pub trait Puzzle {
 
 #[derive(StructOpt)]
 struct Cli {
-    puzzle: usize,
-    part: u32
+    puzzle: Option<usize>,
+    part: Option<u32>
 }
 
 fn main() {
@@ -43,17 +43,30 @@ fn main() {
     );
     let args = Cli::from_args();
 
-    assert!(args.puzzle > 0, "Puzzles start at index 1.");
-    assert!(args.puzzle <= puzzles.len(), "Puzzle {} does not yet have a solution", args.puzzle);
-
-    let ref mk_puzzle = puzzles[args.puzzle-1];
-    let input = std::fs::read_to_string(format!("src/puzzle{}/input.txt", args.puzzle)).expect("cannot read puzzle input.");
-    let puzzle = mk_puzzle(input);
-    let result = match args.part {
-        1 => puzzle.part1(),
-        2 => puzzle.part2(),
-        _ => panic!("puzzles part is either 1 or 2")
+    let pzls = match args.puzzle {
+        None => 1..=puzzles.len(),
+        Some(pzl) => {
+            assert!(pzl > 0, "Puzzles start at index 1.");
+            assert!(pzl <= puzzles.len(), "Puzzle {} does not yet have a solution", pzl);
+            pzl..=pzl
+        }
     };
-    
-    println!("Puzzle {} part {}: {}", args.puzzle, args.part, result);
+    let parts = match args.part {
+        None => 1..=2,
+        Some(part) => part..=part
+    };
+
+    for pzl in pzls {
+        let ref mk_puzzle = puzzles[pzl-1];
+        let input = std::fs::read_to_string(format!("src/puzzle{}/input.txt", pzl)).expect("cannot read puzzle input.");
+        let puzzle = mk_puzzle(input);
+        for part in parts.clone() {
+            let result = match part {
+                1 => puzzle.part1(),
+                2 => puzzle.part2(),
+                _ => panic!("puzzles part is either 1 or 2")
+            };
+            println!("Puzzle {} part {}: {}", pzl, part, result);
+        }
+    }
 }
