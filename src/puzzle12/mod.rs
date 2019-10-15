@@ -80,7 +80,12 @@ impl crate::Puzzle for Puzzle12 {
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let mut gen = Generation::new(&self.initial_state);
+        let rules = &self.growing_rules();
+        for _ in 0..(50000000000 as u64) {
+            gen = gen.grow(rules);
+        }
+        gen.plant_containing_pots().to_string()
     }
 }
 
@@ -111,7 +116,33 @@ impl Generation {
         Generation { gen: 0, state : s }
     }
 
-    fn grow(&self, rules: &HashSet<Vec<bool>>) -> Generation {
+    fn grow(&self, rules: &HashSet<BitSet>) -> Generation {
+        let current_state: HashSet<i32> = HashSet::new();
+        let mut new_state = HashSet;
+
+        current_state.iter()
+            .map(|plant_idx| {
+                let mut plant_state = Vec::new();
+                for other_idx in (plant_idx-2)..=(plant_idx+2) {
+                    plant_state.push(current_state.contains(other_idx));
+                }
+                rules.contains()
+            })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         let mut gen_state = self.state.clone();
         if let Some(first) = self.state.iter().next() {
             gen_state.insert(0, Pot { index: first.index - 1, has_plant: false });
