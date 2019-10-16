@@ -192,16 +192,19 @@ struct Puzzle13 {
 }
 
 impl Puzzle13 {
-    fn tick(&mut self) -> Vec<&Pt> {
+    fn tick(&mut self) -> Vec<Pt> {
         let mut new_positions = HashSet::new();
         let mut collisions = Vec::new();
-        let mut carts_to_move = self.carts.iter_mut().collect::<BinaryHeap<_>>();
-        while let Some(cart) = carts_to_move.pop() {
-            cart.advance(&self.tracks);
-            if !new_positions.insert(&cart.pt) {
-                collisions.push(&cart.pt);
+        {
+            let mut carts_to_move = self.carts.iter_mut().collect::<BinaryHeap<_>>();
+            while let Some(cart) = carts_to_move.pop() {
+                cart.advance(&self.tracks);
+                if !new_positions.insert(&cart.pt) {
+                    collisions.push(cart.pt);
+                }
             }
         }
+        self.carts.retain(|cart| !collisions.contains(&cart.pt));
         collisions
     }
 }
@@ -213,13 +216,18 @@ impl crate::Puzzle for Puzzle13 {
         let mut collision = None;
         while collision.is_none() {
             // this is weird because pzl gets borrowed multiple times otherwise
-            collision = pzl.tick().get(0).map(|pt|**pt);
+            collision = pzl.tick().get(0).map(|pt|*pt);
         }
         format!("First collision occurs at {:?}", collision.expect(""))
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let mut pzl = Puzzle13 { tracks: self.tracks.clone(), carts: self.carts.clone() };
+
+        while pzl.carts.len() > 1 {
+            pzl.tick();
+        }
+        format!("Last remaining cart is at {:?}", pzl.carts.get(0).expect("no more carts"))
     }
 }
 
