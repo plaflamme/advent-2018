@@ -42,6 +42,7 @@ pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
     Box::new(parse(input))
 }
 
+#[derive(Debug)]
 enum Track {
     NS, // |
     EW, // -
@@ -49,6 +50,21 @@ enum Track {
     Turn, // / or \ but requires looking around this tile to know where to re-orient to
 
     Intersection // +
+}
+
+impl Track {
+    fn valid_after_turn(&self, from_dir: &Direction) -> bool {
+        match self {
+            Track::NS => {
+                *from_dir == Direction::East || *from_dir == Direction::West
+            },
+            Track::EW => {
+                *from_dir == Direction::North || *from_dir == Direction::South
+            },
+            Track::Turn => true,
+            Track::Intersection => true
+        }
+    }
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
@@ -133,35 +149,7 @@ impl Cart {
 
         match new_track {
             Track::Turn => {
-                let new_dir = match self.dir {
-                    Direction::East | Direction::West => {
-                        let north_track = self.pt.peek_towards(&Direction::North).and_then(|x| tracks.values.get(&x));
-                        let south_track = self.pt.peek_towards(&Direction::South).and_then(|x| tracks.values.get(&x));
-
-                        // only one of them should be NS
-                        match (north_track, south_track) {
-                            (Some(Track::NS), Some(Track::NS)) => panic!(format!("Invalid turn at {:?}. Both north and south tracks are possible destinations.", self.pt)),
-                            (Some(Track::NS), _) => Direction::North,
-                            (_, Some(Track::NS)) => Direction::South,
-                            _ => panic!("invalid track!")
-                        }
-                    },
-                    Direction::North | Direction::South => {
-                        let east_track = self.pt.peek_towards(&Direction::East).and_then(|x| tracks.values.get(&x));
-                        let west_track = self.pt.peek_towards(&Direction::West).and_then(|x| tracks.values.get(&x));
-
-                        // only one of them should be EW
-                        match (east_track, west_track) {
-                            (Some(Track::EW), Some(Track::EW)) => panic!(format!("Invalid turn at {:?}. Both east and west tracks are possible destinations.", self.pt)),
-                            (Some(Track::EW), _) => Direction::East,
-                            (_, Some(Track::EW)) => Direction::West,
-                            _ => panic!("invalid track!")
-                        }
-                    }
-                };
-
-                // TODO: there was something else to do here...
-                self.dir = new_dir;
+                self.dir = tracks.resolve_turn(&self.pt, &self.dir);
             },
             Track::Intersection => {
                 self.dir = self.next_intersection.apply(&self.dir);
@@ -174,6 +162,28 @@ impl Cart {
 }
 
 struct Tracks { values: HashMap<Pt, Track> }
+
+impl Tracks {
+    fn resolve_turn(&self, at: &Pt, from_dir: &Direction) -> Direction {
+        let possible_dirs = match from_dir {
+            Direction::East | Direction::West => vec![Direction::North, Direction::South],
+            Direction::North | Direction::South => vec![Direction::East, Direction::West]
+        };
+
+        let new_dir = possible_dirs.iter()
+            .filter(|dir| {
+                at.peek_towards(&dir)
+                    .and_then(|pt| self.values.get(&pt))
+                    .map(|t| t.valid_after_turn(&from_dir))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+
+        assert!(new_dir.len() == 1, format!("expected only one possible turn ouctome at {:?}, found {}", at, new_dir.len()));
+
+        **new_dir.get(0).expect(&format!("no possible direction for turn at {:?}", at))
+    }
+}
 
 struct Puzzle13 {
     tracks: Tracks,
@@ -252,6 +262,9 @@ mod test {
     #[test]
     fn test_collision() {
         let mut pzl13 = parse(EXAMPLE.to_owned());
-        assert_eq!(0, pzl13.tick().len());
+        for _ in 0..13 {
+            assert_eq!(0, pzl13.tick().len());
+        }
+        assert_eq!(vec![&Pt::new(7,3)], pzl13.tick())
     }
 }
