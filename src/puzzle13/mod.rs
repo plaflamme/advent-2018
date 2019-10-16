@@ -30,7 +30,7 @@ fn parse(input: String) -> Puzzle13 {
                     tracks.insert(pt.clone(), track);
                     match cart {
                         None => (),
-                        Some(dir) => carts.push(Cart { pt: pt.clone(), dir })
+                        Some(dir) => carts.push(Cart { pt: pt.clone(), dir, next_intersection: IntersectionStep::Left })
                     };
                 });
         });
@@ -51,12 +51,50 @@ enum Track {
     Intersection // +
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
 enum Direction {
     North,
     East,
     South,
     West
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+enum IntersectionStep {
+    Left,
+    Straight,
+    Right
+}
+
+impl IntersectionStep {
+    fn next(&self) -> Self {
+        match self {
+            IntersectionStep::Left => IntersectionStep::Straight,
+            IntersectionStep::Straight => IntersectionStep::Right,
+            IntersectionStep::Right => IntersectionStep::Left,
+        }
+    }
+
+    fn apply(&self, dir: &Direction) -> Direction {
+        match self {
+            IntersectionStep::Straight => *dir,
+            IntersectionStep::Left => {
+                match dir {
+                    Direction::North => Direction::West,
+                    Direction::East => Direction::North,
+                    Direction::South => Direction::East,
+                    Direction::West => Direction::South,
+                }
+            },
+            IntersectionStep::Right =>
+                match dir {
+                    Direction::North => Direction::East,
+                    Direction::East => Direction::South,
+                    Direction::South => Direction::West,
+                    Direction::West => Direction::North,
+                },
+        }
+    }
 }
 
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
@@ -85,7 +123,7 @@ impl Pt {
     }
 }
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-struct Cart { pt: Pt, dir: Direction }
+struct Cart { pt: Pt, dir: Direction, next_intersection: IntersectionStep }
 
 impl Cart {
     fn advance(&mut self, tracks: &Tracks) {
@@ -125,7 +163,10 @@ impl Cart {
                 // TODO: there was something else to do here...
                 self.dir = new_dir;
             },
-            Track::Intersection => unimplemented!(),
+            Track::Intersection => {
+                self.dir = self.next_intersection.apply(&self.dir);
+                self.next_intersection = self.next_intersection.next();
+            }
             _ => ()
         };
 
@@ -178,13 +219,13 @@ mod test {
     #[test]
     fn test_parse() {
         let pzl13 = parse(EXAMPLE.to_owned());
-        assert_eq!(vec![Cart{ pt: Pt::new(2,0), dir: Direction::East}, Cart{ pt: Pt::new(9,3), dir: Direction::South}], pzl13.carts);
+        assert_eq!(vec![Cart{ pt: Pt::new(2,0), dir: Direction::East, next_intersection: IntersectionStep::Left}, Cart{ pt: Pt::new(9,3), dir: Direction::South, next_intersection: IntersectionStep::Left}], pzl13.carts);
     }
 
     #[test]
     fn test_cart() {
         let mut pzl13 = parse(EXAMPLE.to_owned());
-        let mut cart0 = pzl13.carts.get_mut(0).expect("missing cart");
+        let cart0 = pzl13.carts.get_mut(0).expect("missing cart");
 
         cart0.advance(&pzl13.tracks);
         assert_eq!(Pt::new(3,0), cart0.pt);
@@ -193,6 +234,19 @@ mod test {
         cart0.advance(&pzl13.tracks);
         assert_eq!(Pt::new(4,0), cart0.pt);
         assert_eq!(Direction::South, cart0.dir);
+
+        let cart1 = pzl13.carts.get_mut(1).expect("missing cart");
+
+        cart1.advance(&pzl13.tracks);
+        assert_eq!(Pt::new(9,4), cart1.pt);
+        assert_eq!(Direction::East, cart1.dir);
+        assert_eq!(IntersectionStep::Straight, cart1.next_intersection);
+
+        cart1.advance(&pzl13.tracks);
+        assert_eq!(Pt::new(10,4), cart1.pt);
+        assert_eq!(Direction::East, cart1.dir);
+        assert_eq!(IntersectionStep::Straight, cart1.next_intersection);
+
     }
 
     #[test]
