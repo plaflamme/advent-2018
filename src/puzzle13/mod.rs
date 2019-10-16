@@ -42,7 +42,7 @@ pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
     Box::new(parse(input))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Track {
     NS, // |
     EW, // -
@@ -75,7 +75,7 @@ enum Direction {
     West
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
 enum IntersectionStep {
     Left,
     Straight,
@@ -113,7 +113,7 @@ impl IntersectionStep {
     }
 }
 
-#[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+#[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
 struct Pt { y: u16, x: u16 } // y comes first for ordering
 impl Pt {
     fn new(x: u16, y: u16) -> Self {
@@ -138,7 +138,7 @@ impl Pt {
         }
     }
 }
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
 struct Cart { pt: Pt, dir: Direction, next_intersection: IntersectionStep }
 
 impl Cart {
@@ -161,6 +161,7 @@ impl Cart {
     }
 }
 
+#[derive(Clone)]
 struct Tracks { values: HashMap<Pt, Track> }
 
 impl Tracks {
@@ -207,7 +208,14 @@ impl Puzzle13 {
 
 impl crate::Puzzle for Puzzle13 {
     fn part1(&self) -> String {
-        unimplemented!()
+        let mut pzl = Puzzle13 { tracks: self.tracks.clone(), carts: self.carts.clone() };
+
+        let mut collision = None;
+        while collision.is_none() {
+            // this is weird because pzl gets borrowed multiple times otherwise
+            collision = pzl.tick().get(0).map(|pt|**pt);
+        }
+        format!("First collision occurs at {:?}", collision.expect(""))
     }
 
     fn part2(&self) -> String {
