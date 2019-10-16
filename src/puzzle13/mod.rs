@@ -19,8 +19,8 @@ fn parse(input: String) -> Puzzle13 {
                         '>' => (Some(Direction::East), Track::EW),
                         '<' => (Some(Direction::West), Track::EW),
 
-                        '\\'  => (None, Track::Turn),
-                        '/'  => (None, Track::Turn),
+                        '\\'  => (None, Track::TurnBack),
+                        '/'  => (None, Track::TurnFwd),
 
                         '+'  => (None, Track::Intersection),
                         c => panic!("unexpected input char {}", c)
@@ -47,24 +47,10 @@ enum Track {
     NS, // |
     EW, // -
 
-    Turn, // / or \ but requires looking around this tile to know where to re-orient to
+    TurnFwd, // /
+    TurnBack, // \
 
     Intersection // +
-}
-
-impl Track {
-    fn valid_after_turn(&self, from_dir: &Direction) -> bool {
-        match self {
-            Track::NS => {
-                *from_dir == Direction::East || *from_dir == Direction::West
-            },
-            Track::EW => {
-                *from_dir == Direction::North || *from_dir == Direction::South
-            },
-            Track::Turn => true,
-            Track::Intersection => true
-        }
-    }
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
@@ -128,16 +114,8 @@ impl Pt {
             Direction::West => self.x -= 1
         };
     }
-
-    fn peek_towards(&self, d: &Direction) -> Option<Self> {
-        match d {
-            Direction::North => if self.y > 0 { Some(Pt::new(self.x, self.y - 1)) } else { None },
-            Direction::South => Some(Pt::new(self.x, self.y + 1)),
-            Direction::East => Some(Pt::new(self.x + 1, self.y)),
-            Direction::West => if self.x > 0 { Some(Pt::new(self.x - 1, self.y)) } else { None }
-        }
-    }
 }
+
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
 struct Cart { pt: Pt, dir: Direction, next_intersection: IntersectionStep }
 
@@ -148,8 +126,21 @@ impl Cart {
         let new_track = tracks.values.get(&self.pt).expect(&format!("missing track at {:?}", self.pt));
 
         match new_track {
-            Track::Turn => {
-                self.dir = tracks.resolve_turn(&self.pt, &self.dir);
+            Track::TurnFwd => {
+                self.dir = match self.dir {
+                    Direction::North => Direction::East,
+                    Direction::South => Direction::West,
+                    Direction::East => Direction::North,
+                    Direction::West => Direction::South
+                }
+            },
+            Track::TurnBack => {
+                self.dir = match self.dir {
+                    Direction::North => Direction::West,
+                    Direction::South => Direction::East,
+                    Direction::East => Direction::South,
+                    Direction::West => Direction::North
+                }
             },
             Track::Intersection => {
                 self.dir = self.next_intersection.apply(&self.dir);
@@ -163,28 +154,6 @@ impl Cart {
 
 #[derive(Clone)]
 struct Tracks { values: HashMap<Pt, Track> }
-
-impl Tracks {
-    fn resolve_turn(&self, at: &Pt, from_dir: &Direction) -> Direction {
-        let possible_dirs = match from_dir {
-            Direction::East | Direction::West => vec![Direction::North, Direction::South],
-            Direction::North | Direction::South => vec![Direction::East, Direction::West]
-        };
-
-        let new_dir = possible_dirs.iter()
-            .filter(|dir| {
-                at.peek_towards(&dir)
-                    .and_then(|pt| self.values.get(&pt))
-                    .map(|t| t.valid_after_turn(&from_dir))
-                    .unwrap_or(false)
-            })
-            .collect::<Vec<_>>();
-
-        assert!(new_dir.len() == 1, format!("expected only one possible turn ouctome at {:?}, found {}", at, new_dir.len()));
-
-        **new_dir.get(0).expect(&format!("no possible direction for turn at {:?}", at))
-    }
-}
 
 struct Puzzle13 {
     tracks: Tracks,
@@ -242,6 +211,14 @@ mod test {
 \-+-/  \-+--/
   \------/"#;
 
+    const EXAMPLE2: &str = r#"/>-<\
+|   |
+| /<+-\
+| | | v
+\>+</ |
+  |   ^
+  \<->/"#;
+
     #[test]
     fn test_parse() {
         let pzl13 = parse(EXAMPLE.to_owned());
@@ -276,11 +253,21 @@ mod test {
     }
 
     #[test]
-    fn test_collision() {
+    fn test_part1() {
         let mut pzl13 = parse(EXAMPLE.to_owned());
         for _ in 0..13 {
             assert_eq!(0, pzl13.tick().len());
         }
-        assert_eq!(vec![&Pt::new(7,3)], pzl13.tick())
+        assert_eq!(vec![Pt::new(7,3)], pzl13.tick())
+    }
+
+
+    #[test]
+    fn test_part2() {
+        let mut pzl13 = parse(EXAMPLE2.to_owned());
+        while pzl13.carts.len() > 1 {
+            pzl13.tick();
+        }
+        assert_eq!(Pt::new(6,4), pzl13.carts.get(0).expect("no more carts").pt);
     }
 }
