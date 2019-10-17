@@ -1,4 +1,5 @@
-use std::collections::{HashMap, BinaryHeap, HashSet};
+use std::collections::HashMap;
+use std::cell::RefCell;
 
 fn parse(input: String) -> Puzzle13 {
     let mut tracks = HashMap::new();
@@ -30,7 +31,7 @@ fn parse(input: String) -> Puzzle13 {
                     tracks.insert(pt.clone(), track);
                     match cart {
                         None => (),
-                        Some(dir) => carts.push(Cart { pt: pt.clone(), dir, next_intersection: IntersectionStep::Left })
+                        Some(dir) => carts.push(RefCell::new(Cart { pt: pt.clone(), dir, next_intersection: IntersectionStep::Left, crashed: false }))
                     };
                 });
         });
@@ -61,7 +62,7 @@ enum Direction {
     West
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
 enum IntersectionStep {
     Left,
     Straight,
@@ -116,8 +117,8 @@ impl Pt {
     }
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
-struct Cart { pt: Pt, dir: Direction, next_intersection: IntersectionStep }
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
+struct Cart { pt: Pt, dir: Direction, next_intersection: IntersectionStep, crashed: bool }
 
 impl Cart {
     fn advance(&mut self, tracks: &Tracks) {
@@ -157,23 +158,33 @@ struct Tracks { values: HashMap<Pt, Track> }
 
 struct Puzzle13 {
     tracks: Tracks,
-    carts: Vec<Cart>
+    carts: Vec<RefCell<Cart>>
 }
 
 impl Puzzle13 {
     fn tick(&mut self) -> Vec<Pt> {
-        let mut new_positions = HashSet::new();
+        self.carts.sort_by_key(|cart| cart.borrow().pt);
         let mut collisions = Vec::new();
-        {
-            let mut carts_to_move = self.carts.iter_mut().collect::<BinaryHeap<_>>();
-            while let Some(cart) = carts_to_move.pop() {
-                cart.advance(&self.tracks);
-                if !new_positions.insert(&cart.pt) {
-                    collisions.push(cart.pt);
+        for (c1, cell) in self.carts.iter().enumerate() {
+            let mut cart = cell.borrow_mut();
+            if cart.crashed {
+                continue;
+            }
+            cart.advance(&self.tracks);
+
+            for (c2,other) in self.carts.iter().enumerate() {
+                if c1 != c2 {
+                    let mut other_cart = other.borrow_mut();
+                    if other_cart.pt == cart.pt {
+                        collisions.push(cart.pt);
+                        cart.crashed = true;
+                        other_cart.crashed = true;
+                    }
                 }
             }
         }
-        self.carts.retain(|cart| !collisions.contains(&cart.pt));
+
+        self.carts.retain(|x| !x.borrow().crashed);
         collisions
     }
 }
@@ -192,7 +203,6 @@ impl crate::Puzzle for Puzzle13 {
 
     fn part2(&self) -> String {
         let mut pzl = Puzzle13 { tracks: self.tracks.clone(), carts: self.carts.clone() };
-
         while pzl.carts.len() > 1 {
             pzl.tick();
         }
@@ -222,13 +232,17 @@ mod test {
     #[test]
     fn test_parse() {
         let pzl13 = parse(EXAMPLE.to_owned());
-        assert_eq!(vec![Cart{ pt: Pt::new(2,0), dir: Direction::East, next_intersection: IntersectionStep::Left}, Cart{ pt: Pt::new(9,3), dir: Direction::South, next_intersection: IntersectionStep::Left}], pzl13.carts);
+        assert_eq!(
+            vec![
+                RefCell::new(Cart{ pt: Pt::new(2,0), dir: Direction::East, next_intersection: IntersectionStep::Left, crashed: false}),
+                RefCell::new(Cart{ pt: Pt::new(9,3), dir: Direction::South, next_intersection: IntersectionStep::Left, crashed: false})
+            ], pzl13.carts);
     }
 
     #[test]
     fn test_cart() {
-        let mut pzl13 = parse(EXAMPLE.to_owned());
-        let cart0 = pzl13.carts.get_mut(0).expect("missing cart");
+        let pzl13 = parse(EXAMPLE.to_owned());
+        let mut cart0 = pzl13.carts.get(0).expect("missing cart").borrow_mut();
 
         cart0.advance(&pzl13.tracks);
         assert_eq!(Pt::new(3,0), cart0.pt);
@@ -238,7 +252,7 @@ mod test {
         assert_eq!(Pt::new(4,0), cart0.pt);
         assert_eq!(Direction::South, cart0.dir);
 
-        let cart1 = pzl13.carts.get_mut(1).expect("missing cart");
+        let mut cart1 = pzl13.carts.get(1).expect("missing cart").borrow_mut();
 
         cart1.advance(&pzl13.tracks);
         assert_eq!(Pt::new(9,4), cart1.pt);
@@ -268,6 +282,6 @@ mod test {
         while pzl13.carts.len() > 1 {
             pzl13.tick();
         }
-        assert_eq!(Pt::new(6,4), pzl13.carts.get(0).expect("no more carts").pt);
+        assert_eq!(Pt::new(6,4), pzl13.carts.get(0).expect("no more carts").borrow().pt);
     }
 }
