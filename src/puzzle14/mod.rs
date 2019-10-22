@@ -48,28 +48,54 @@ impl Scoreboard {
             .collect::<String>()
     }
 
-    fn solve_part_2(&mut self, pattern: Vec<u8>) -> usize {
+    fn matches(&self, pattern: &Vec<u8>, offset: usize) -> bool {
+        if (self.recipe_scores.len() - offset) < pattern.len() { false } else {
+            for i in 0..pattern.len() {
+                let p = pattern.get(i).unwrap();
+                let recipe_offset_from_last = pattern.len() - i + offset;
+                let c = self.recipe_scores.get(self.recipe_scores.len() - recipe_offset_from_last).unwrap();
+                if *p != *c {
+                    return false;
+                }
+            }
+            true
+        }
+    }
 
-        unimplemented!()
+    fn solve_part_2(&mut self, pattern: &Vec<u8>) -> usize {
+        while self.matches(pattern, 0) == false && self.matches(pattern, 1) == false {
+            self.step();
+        }
+
+        if self.matches(pattern, 0) {
+            self.recipe_scores.len() - pattern.len()
+        } else {
+            self.recipe_scores.len() - pattern.len() - 1
+        }
+
     }
 }
 
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
-    Box::new(Puzzle14 { seed: usize::from_str(&input.trim()).expect(&format!("invalid input {}", input)) })
+    let value = usize::from_str(&input.trim()).expect(&format!("invalid input {}", input));
+    let digits = input.trim().chars().map(|x| u8::from_str(&x.to_string()).expect("not a digit")).collect::<Vec<_>>();
+    Box::new(Puzzle14 { value, digits })
 }
 
 struct Puzzle14 {
-    seed: usize
+    value: usize,
+    digits: Vec<u8>
 }
 
 impl crate::Puzzle for Puzzle14 {
     fn part1(&self) -> String {
         let mut scoreboard = Scoreboard::new();
-        scoreboard.solve_after_recipes(self.seed)
+        scoreboard.solve_after_recipes(self.value)
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let mut scoreboard = Scoreboard::new();
+        scoreboard.solve_part_2(&self.digits).to_string()
     }
 }
 
@@ -115,6 +141,9 @@ mod test {
 
     #[test]
     fn part2() {
-
+        assert_eq!(9, Scoreboard::new().solve_part_2(&vec![5,1,5,8,9]));
+        assert_eq!(5, Scoreboard::new().solve_part_2(&vec![0,1,2,4,5]));
+        assert_eq!(18, Scoreboard::new().solve_part_2(&vec![9,2,5,1,0]));
+        assert_eq!(2018, Scoreboard::new().solve_part_2(&vec![5,9,4,1,4]));
     }
 }
