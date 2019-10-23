@@ -96,36 +96,9 @@ struct Board {
     units: HashSet<Unit>
 }
 
-fn paths(origin: &Pt, visited: &HashSet<Pt>, adjacent: &HashMap<Pt, Vec<Pt>>) -> Vec<Path> {
-
-    match adjacent.get(&origin) {
-        None => Vec::new(),
-        Some(others) => {
-            let mut candidates = others.clone();
-            candidates.retain(|other| !visited.contains(other));
-            let mut visited_and_self = visited.clone();
-            visited_and_self.insert(*origin);
-
-            let mut all_paths = Vec::new();
-            for candidate in candidates {
-                let sub_paths = paths(&candidate, &visited_and_self, adjacent);
-
-                // because we've computed a portion of that nodes paths, we should keep them around so we don't have to recompute them
-//                all_paths.append(&mut sub_paths.clone());
-
-                for sub in sub_paths {
-                    all_paths.push(Path::new(origin, &sub));
-                }
-            }
-            all_paths
-        }
-    }
-}
-
 impl Board {
 
-    fn compute_paths(&self) {
-
+    fn compute_path(&self, from: &Pt, to: &Pt) -> Option<Path> {
         // Pt -> Vec<Pt>
         let mut adjacent = HashMap::new();
 
@@ -139,6 +112,23 @@ impl Board {
             });
             adjacent.insert(pt.clone(), others);
         }
+        let shortest = pathfinding::directed::dijkstra::dijkstra(
+            from,
+            |other| {
+                let adjacents = adjacent.get(other).cloned().unwrap_or(Vec::new());
+                adjacents.iter().cloned().map(|o| (o, 1)).collect::<Vec<_>>()
+            },
+            |n| n == to);
+
+        let all = pathfinding::directed::dijkstra::dijkstra_all(
+            from,
+            |other| {
+                let adjacents = adjacent.get(other).cloned().unwrap_or(Vec::new());
+                adjacents.iter().cloned().map(|o| (o, 1)).collect::<Vec<_>>()
+            });
+        println!("{:?}", all);
+
+        shortest.map(|(pts, _)| Path { pts })
     }
 
     fn step(&self) {
@@ -272,5 +262,9 @@ mod test {
     }
 
     #[test]
-    fn test_compute_paths() {}
+    fn test_compute_paths() {
+        let board = parse(EXAMPLE.to_owned());
+        let shortest = board.compute_path(&Pt::new(1,1), &Pt::new(4,4));
+        println!("{:?}", shortest)
+    }
 }
