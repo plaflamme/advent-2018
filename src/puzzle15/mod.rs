@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet, BinaryHeap};
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
-use std::cmp::Ordering;
 use std::iter;
+use std::cell::RefCell;
 
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
 struct Pt { top: u16, left: u16 }
@@ -53,7 +53,7 @@ enum Kind {
 struct Unit {
     pos: Pt,
     kind: Kind,
-    hit_pts: u8
+    hit_pts: i16
 }
 
 impl Unit {
@@ -68,12 +68,6 @@ struct Path {
 }
 
 impl Path {
-    fn new(root: &Pt, suffix: &Path) -> Self {
-        let mut pts = Vec::new();
-        pts.push(root.clone());
-        pts.append(&mut suffix.pts.clone());
-        Path { pts }
-    }
 
     fn origin(&self) -> &Pt {
         self.pts.first().expect("empty path")
@@ -84,104 +78,240 @@ impl Path {
     }
 }
 
-struct Target {
-    unit: Unit,
-    path: Path
+#[derive(Debug, Clone)]
+struct Map {
+    locs: HashMap<Pt, Loc>,
+    adjacent_pts: HashMap<Pt, Vec<Pt>>,
+}
+
+impl Map {
+    fn new(locs: HashMap<Pt, Loc>) -> Self {
+        // Pt -> Vec<Pt>
+        let mut adjacent_pts = HashMap::new();
+
+        for pt in locs.keys() {
+            let mut others = pt.adjacent();
+            others.retain(|other| {
+                match locs.get(other) {
+                    Some(Loc::Space) => true,
+                    _ => false
+                }
+            });
+            adjacent_pts.insert(pt.clone(), others);
+        }
+
+        Map { locs, adjacent_pts }
+    }
+
+    fn shortest_path(&self, from: &Pt, to: &Pt, excluding: &HashSet<Pt>) -> Option<Path> {
+        let shortest = pathfinding::directed::dijkstra::dijkstra(
+            from,
+            |other| {
+                let adjacents = self.adjacent_pts.get(other).cloned().unwrap_or(Vec::new());
+                adjacents.iter()
+                    .cloned()
+                    .filter(|pt| !excluding.contains(pt))
+                    .map(|o| (o, 1))
+                    .collect::<Vec<_>>()
+            },
+            |n| n == to);
+
+        shortest.map(|(pts, _)| Path { pts })
+    }
+
+    fn adjacent(&self, pos: &Pt) -> Vec<Pt> {
+        self.adjacent_pts.get(&pos).cloned().unwrap_or_else(|| Vec::new())
+    }
+}
+
+#[derive(Debug)]
+enum AttackOutcome {
+    NotInRange,
+    Attacked(Unit)
+}
+
+#[derive(Debug)]
+enum MoveOutcome {
+    Unreachable,
+    Moved(Pt, Pt)
+}
+
+#[derive(Debug)]
+enum TurnOutcome {
+    NoTargets,
+    Dead(Unit),
+    Alive(Unit, Option<MoveOutcome>, AttackOutcome)
+}
+
+enum RoundOutcome {
+    AllDone,
+    RoundDone(Vec<TurnOutcome>)
 }
 
 // All valid paths on the board can be precomputed and then checked at runtime for blockage by a unit.
 #[derive(Debug, Clone)]
 struct Board {
-    locs: HashMap<Pt, Loc>,
-    units: HashSet<Unit>
+    map: Map,
+    all_units: Vec<RefCell<Unit>>
 }
 
 impl Board {
 
-    fn compute_path(&self, from: &Pt, to: &Pt) -> Option<Path> {
-        // Pt -> Vec<Pt>
-        let mut adjacent = HashMap::new();
-
-        for pt in self.locs.keys() {
-            let mut others = pt.adjacent();
-            others.retain(|other| {
-                match self.locs.get(other) {
-                    Some(Loc::Space) => true,
-                    _ => false
-                }
-            });
-            adjacent.insert(pt.clone(), others);
+    fn solve_part1(&mut self) -> (u32, u32) {
+        let mut rounds = 0;
+        loop {
+            println!("{}", self);
+            match self.round() {
+                RoundOutcome::AllDone => break,
+                RoundOutcome::RoundDone(_) => rounds += 1
+            };
         }
-        let shortest = pathfinding::directed::dijkstra::dijkstra(
-            from,
-            |other| {
-                let adjacents = adjacent.get(other).cloned().unwrap_or(Vec::new());
-                adjacents.iter().cloned().map(|o| (o, 1)).collect::<Vec<_>>()
-            },
-            |n| n == to);
+        let sum: u32 = self.all_units.iter()
+            .filter(|x| x.borrow().hit_pts > 0)
+            .map(|x| x.borrow().hit_pts as u32)
+            .sum();
 
-        let all = pathfinding::directed::dijkstra::dijkstra_all(
-            from,
-            |other| {
-                let adjacents = adjacent.get(other).cloned().unwrap_or(Vec::new());
-                adjacents.iter().cloned().map(|o| (o, 1)).collect::<Vec<_>>()
+        (rounds, sum)
+    }
+
+    fn round(&mut self) -> RoundOutcome {
+        self.all_units.sort_by_key(|x| x.borrow().pos);
+        let mut turn_outcomes = Vec::new();
+
+        for current_unit in self.all_units.iter() {
+            match self.turn(&current_unit) {
+                TurnOutcome::NoTargets => return RoundOutcome::AllDone,
+                outcome => {
+                    turn_outcomes.push(outcome);
+                }
+            }
+        }
+        RoundOutcome::RoundDone(turn_outcomes)
+    }
+
+    fn turn(&self, current_unit: &RefCell<Unit>) -> TurnOutcome {
+        let cloned = current_unit.borrow().clone();
+        if cloned.hit_pts <= 0 { TurnOutcome::Dead(cloned) } else {
+            let potential_targets = self.all_units
+                .iter()
+                .filter(|other| other.borrow().hit_pts > 0)
+                .filter(|other| other.borrow().kind != cloned.kind)
+                .collect::<Vec<_>>();
+
+            if potential_targets.is_empty() { return TurnOutcome::NoTargets }
+
+            match self.attack(current_unit, &potential_targets) {
+                AttackOutcome::NotInRange => {
+                    let moved = self.move_unit(current_unit, &potential_targets);
+                    let attack = self.attack(current_unit, &potential_targets);
+                    TurnOutcome::Alive(cloned, Some(moved), attack)
+                },
+                outcome => TurnOutcome::Alive(cloned, None, outcome)
+            }
+        }
+    }
+
+    fn move_unit(&self, unit: &RefCell<Unit>, potential_targets: &Vec<&RefCell<Unit>>) -> MoveOutcome {
+        // For each potential target, compute all positions in range
+        //   A position in range is one that is adjacent to the target and not occupied
+        let in_range = potential_targets.iter()
+            .flat_map(|target| {
+                self.in_range(&target.borrow().pos)
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        let mut excluding = self.current_unit_positions();
+        excluding.remove(&unit.borrow().pos);
+
+        // Because our shortest path algorithm only returns one option, we have to instead compute the path from each possible first step around this unit
+        //   From those paths, we can take the shortest ones and then pick the one where the origin is in reading order.
+        let first_steps = self.in_range(&unit.borrow().pos);
+
+        let mut reachable = first_steps
+            .iter()
+            .flat_map(|origin| {
+                in_range
+                    .iter()
+                    .flat_map(|pt| self.map.shortest_path(&origin, pt, &excluding))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        reachable.sort_by_key(|x| x.pts.len());
+
+        if reachable.is_empty() { MoveOutcome::Unreachable } else {
+            let shortest_length = reachable.first().unwrap().pts.len();
+            // only consider nearest
+            let mut nearest = reachable.iter().filter(|x| x.pts.len() == shortest_length).collect::<Vec<_>>();
+
+            // sort the paths in reading order, this is our
+            nearest.sort_by_key(|path| path.origin());
+
+            let move_to = nearest.first().unwrap().origin();
+
+            let from = unit.borrow().pos.clone();
+            unit.borrow_mut().pos = *move_to;
+            MoveOutcome::Moved(from, *move_to)
+        }
+    }
+
+    fn attack(&self, attacker: &RefCell<Unit>, potential_targets: &Vec<&RefCell<Unit>>) -> AttackOutcome {
+        let mut in_range = potential_targets
+            .iter()
+            .filter(|target| target.borrow().pos.distance(&attacker.borrow().pos) == 1)
+            .collect::<Vec<_>>();
+
+        if in_range.is_empty() { AttackOutcome::NotInRange } else {
+            // sort by hit pts, then by reading order
+            in_range.sort_by(|lhs_ref, rhs_ref| {
+                let lhs = lhs_ref.borrow();
+                let rhs = rhs_ref.borrow();
+                lhs.hit_pts.cmp(&rhs.hit_pts).then(lhs.pos.cmp(&rhs.pos))
             });
-        println!("{:?}", all);
 
-        shortest.map(|(pts, _)| Path { pts })
+            let target = in_range.first().expect("Unexpected empty units in range");
+
+            target.borrow_mut().hit_pts -= 3;
+
+            AttackOutcome::Attacked(target.borrow().clone())
+        }
     }
 
-    fn step(&self) {
-        // for each unit in reading order of starting position
-        //   for each target
-        //     compute shortest paths to target
-        //   if candidate_paths is empty { done }
-        //   else {
-        //     shortest_paths = shortest(candidate_paths)
-        //     path = reading_order(shortest_paths)
-        //     move_to(path.head) // this needs to handle not moving at all when we're already next to a target
-        //   }
-        //   if let Some(target) = reading_order(weakest(adjacent targets)) {
-        //     attack(target)
-        //     if target.isDead { remove(target) }
-        //   }
-
-//        let mut ordered_units = BinaryHeap::new();
-//        for u in self.units.iter() {
-//            ordered_units.push(&u);
-//        }
-
-//        for current_unit in ordered_units {
-//            let potential_targets = self.units.iter().filter(|other| other.kind != current_unit.kind).collect::<Vec<_>>();
-//            for target in potential_targets {
-//                let shortest_path = Path::new(&current_unit.pos, &target.pos, &self.locs);
-//                Target { unit: target.clone(), path: shortest_path }
-//            }
-//            // move
-//            // attack
-//        }
-
-        unimplemented!()
+    fn in_range(&self, pos: &Pt) -> Vec<Pt> {
+        let current_pos = self.current_unit_positions();
+        self.map.adjacent(pos)
+            .iter()
+            .filter(|pt| !current_pos.contains(pt))
+            .cloned()
+            .collect::<Vec<_>>()
     }
 
-    fn path(&self, from: &Pt, to: &Pt) -> Vec<Pt> {
-        unimplemented!()
+    fn current_unit_positions(&self) -> HashSet<Pt> {
+        self.all_units.iter()
+            .cloned()
+            .filter(|x| x.borrow().hit_pts > 0)
+            .map(|x| x.borrow().pos)
+            .collect::<HashSet<_>>()
     }
 }
 
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let mut pts = self.locs.iter().collect::<Vec<_>>();
+        let mut pts = self.map.locs.iter().collect::<Vec<_>>();
         pts.sort_by_key(|(a,_)| **a);
         pts.iter()
             .for_each(|(pt, loc)| {
                 if pt.left == 0 && pt.top != 0 {
                     writeln!(f, "").unwrap();
                 }
-                if let Some(unit) = self.units.iter().find(|u| u.pos == **pt) {
-                    let c = match unit.kind {
-                        Kind::Guard => 'G',
-                        Kind::Elf => 'E',
+                if let Some(unit) = self.all_units.iter().find(|u| u.borrow().pos == **pt) {
+                    let dead = unit.borrow().hit_pts <= 0;
+                    let c = match unit.borrow().kind {
+                        Kind::Guard => if dead { 'g' } else { 'G' },
+                        Kind::Elf => if dead { 'e' } else { 'E' },
                     };
                     write!(f, "{}", c).unwrap()
                 } else {
@@ -198,7 +328,7 @@ impl Display for Board {
 
 fn parse(input: String) -> Board {
     let mut locs = HashMap::new();
-    let mut units = HashSet::new();
+    let mut all_units = Vec::new();
     input.lines()
         .enumerate()
         .for_each(|(top, line)| {
@@ -215,12 +345,12 @@ fn parse(input: String) -> Board {
 
                     locs.insert(Pt::new(top as u16, left as u16), loc);
                     if let Some(k) = kind {
-                        units.insert(Unit::new(Pt::new(top as u16, left as u16), k));
+                        all_units.push(RefCell::new(Unit::new(Pt::new(top as u16, left as u16), k)));
                     }
                 })
         });
 
-    Board { locs, units }
+    Board { map: Map::new(locs), all_units }
 }
 
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
@@ -233,7 +363,10 @@ struct Puzzle15 {
 
 impl crate::Puzzle for Puzzle15 {
     fn part1(&self) -> String {
-        unimplemented!()
+        let mut board = self.board.clone();
+        let (rounds, sum) = board.solve_part1();
+        println!("{}", board);
+        (rounds * sum).to_string()
     }
 
     fn part2(&self) -> String {
@@ -245,7 +378,7 @@ impl crate::Puzzle for Puzzle15 {
 mod test {
     use super::*;
 
-    const EXAMPLE: &str = r#"#########
+    const MOVE_EXAMPLE: &str = r#"#########
 #G..G..G#
 #.......#
 #.......#
@@ -254,17 +387,49 @@ mod test {
 #.......#
 #G..G..G#
 #########"#;
+    const MOVE_3_EXAMPLE: &str = r#"#########
+#.......#
+#..GGG..#
+#..GEG..#
+#G..G...#
+#......G#
+#.......#
+#.......#
+#########"#;
+
+    const EXAMPLE: &str = r#"#######
+#.G...#
+#...EG#
+#.#.#G#
+#..G#E#
+#.....#
+#######"#;
 
     #[test]
     fn test_parse() {
-        let printed = format!("{}", parse(EXAMPLE.to_owned()));
-        assert_eq!(EXAMPLE, printed);
+        let printed = format!("{}", parse(MOVE_EXAMPLE.to_owned()));
+        assert_eq!(MOVE_EXAMPLE, printed);
     }
 
     #[test]
-    fn test_compute_paths() {
-        let board = parse(EXAMPLE.to_owned());
-        let shortest = board.compute_path(&Pt::new(1,1), &Pt::new(4,4));
-        println!("{:?}", shortest)
+    fn test_move() {
+        let mut board = parse(MOVE_EXAMPLE.to_owned());
+        board.round();
+        board.round();
+        board.round();
+        assert_eq!(MOVE_3_EXAMPLE, format!("{}", board));
+    }
+
+    #[test]
+    fn test_example() {
+        let mut board = parse(EXAMPLE.to_owned());
+
+        let (rounds, sum) = board.solve_part1();
+
+        println!("{}", board);
+        println!("Done in {} rounds with {}hp left = {}", rounds, sum, sum * rounds);
+
+        assert_eq!(47, rounds);
+        assert_eq!(27730, rounds * sum);
     }
 }
