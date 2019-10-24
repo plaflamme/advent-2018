@@ -148,22 +148,44 @@ enum RoundOutcome {
     RoundDone(Vec<TurnOutcome>)
 }
 
+enum Outcome {
+    ElfDied,
+    Solved(u32, u32)
+}
+
 // All valid paths on the board can be precomputed and then checked at runtime for blockage by a unit.
 #[derive(Debug, Clone)]
 struct Board {
     map: Map,
-    all_units: Vec<RefCell<Unit>>
+    all_units: Vec<RefCell<Unit>>,
+    attack_pwr: HashMap<Kind, u16>
 }
 
 impl Board {
 
-    fn solve_part1(&mut self) -> (u32, u32) {
+    fn solve(&mut self, stop_on_elf_death: bool) -> Outcome {
         let mut rounds = 0;
         loop {
             println!("{}", self);
             match self.round() {
                 RoundOutcome::AllDone => break,
-                RoundOutcome::RoundDone(_) => rounds += 1
+                RoundOutcome::RoundDone(outcomes) => {
+                    if stop_on_elf_death {
+                        let elf_died = outcomes.iter()
+                            .find(|turnOutcome| {
+                                match turnOutcome {
+                                    TurnOutcome::Dead(unit) => unit.kind == Kind::Elf,
+                                    _ => false
+                                }
+                            })
+                            .is_some();
+
+                        if elf_died { return Outcome::ElfDied }
+                    }
+                    rounds += 1
+                }
+
+
             };
         }
         let sum: u32 = self.all_units.iter()
@@ -171,7 +193,7 @@ impl Board {
             .map(|x| x.borrow().hit_pts as u32)
             .sum();
 
-        (rounds, sum)
+        Outcome::Solved(rounds, sum)
     }
 
     fn round(&mut self) -> RoundOutcome {
@@ -274,7 +296,7 @@ impl Board {
 
             let target = in_range.first().expect("Unexpected empty units in range");
 
-            target.borrow_mut().hit_pts -= 3;
+            target.borrow_mut().hit_pts -= *self.attack_pwr.get(&attacker.borrow().kind).unwrap_or(&3) as i16;
 
             AttackOutcome::Attacked(target.borrow().clone())
         }
@@ -295,6 +317,13 @@ impl Board {
             .filter(|x| x.borrow().hit_pts > 0)
             .map(|x| x.borrow().pos)
             .collect::<HashSet<_>>()
+    }
+
+    fn unit_count(&self, kind: Kind) -> usize {
+        self.all_units
+            .iter()
+            .filter(|x| x.borrow().hit_pts > 0 && x.borrow().kind == kind)
+            .count()
     }
 }
 
@@ -350,7 +379,7 @@ fn parse(input: String) -> Board {
                 })
         });
 
-    Board { map: Map::new(locs), all_units }
+    Board { map: Map::new(locs), all_units, attack_pwr: HashMap::new() }
 }
 
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
@@ -364,19 +393,47 @@ struct Puzzle15 {
 impl crate::Puzzle for Puzzle15 {
     fn part1(&self) -> String {
         let mut board = self.board.clone();
-        let (rounds, sum) = board.solve_part1();
-        println!("{}", board);
-        (rounds * sum).to_string()
+        match board.solve(false) {
+            Outcome::Solved(rounds, sum) => (rounds * sum).to_string(),
+            _ => panic!("unexpected outcome")
+        }
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let elf_count = self.board.unit_count(Kind::Elf);
+        let mut max_failed_pwr = 3;
+        let mut min_success_pwr: Option<u16> = None;
+        let mut attack_pwr = 4;
+        loop {
+            println!("Attack power is {}", attack_pwr);
+            let mut board = self.board.clone();
+            board.attack_pwr.insert(Kind::Elf, attack_pwr);
+            match board.solve(true) {
+                Outcome::ElfDied => {
+                    max_failed_pwr = attack_pwr;
+                    match min_success_pwr {
+                        None => attack_pwr *= 2,
+                        Some(pwr) => attack_pwr = pwr - ((pwr - max_failed_pwr) / 2)
+                    }
+                },
+                Outcome::Solved(rounds, sum) => {
+                    min_success_pwr = Some(attack_pwr);
+                    if attack_pwr == max_failed_pwr + 1 {
+                        println!("Attack power is {}", attack_pwr);
+                        println!("Solved in {} rounds with {} hps", rounds, sum);
+                        return (rounds * sum).to_string()
+                    }
+                    attack_pwr = attack_pwr - ((attack_pwr - max_failed_pwr) / 2)
+                }
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::Puzzle;
 
     const MOVE_EXAMPLE: &str = r#"#########
 #G..G..G#
@@ -424,12 +481,21 @@ mod test {
     fn test_example() {
         let mut board = parse(EXAMPLE.to_owned());
 
-        let (rounds, sum) = board.solve_part1();
+        match board.solve(false) {
+            Outcome::ElfDied => panic!("unexpectd outcome"),
+            Outcome::Solved(rounds, sum) => {
+                println!("{}", board);
+                println!("Done in {} rounds with {}hp left = {}", rounds, sum, sum * rounds);
 
-        println!("{}", board);
-        println!("Done in {} rounds with {}hp left = {}", rounds, sum, sum * rounds);
+                assert_eq!(47, rounds);
+                assert_eq!(27730, rounds * sum);
+            }
+        }
+    }
 
-        assert_eq!(47, rounds);
-        assert_eq!(27730, rounds * sum);
+    #[test]
+    fn test_part2() {
+        let pzl = Puzzle15 { board: parse(EXAMPLE.to_owned()) };
+        assert_eq!("4988", pzl.part2());
     }
 }
