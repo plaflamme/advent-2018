@@ -358,7 +358,8 @@ impl Display for Board {
 fn parse(input: String) -> Board {
     let mut locs = HashMap::new();
     let mut all_units = Vec::new();
-    input.lines()
+    input.trim()
+        .lines()
         .enumerate()
         .for_each(|(top, line)| {
             line.chars()
@@ -419,6 +420,7 @@ impl crate::Puzzle for Puzzle15 {
                 Outcome::Solved(rounds, sum) => {
                     min_success_pwr = Some(attack_pwr);
                     if attack_pwr == max_failed_pwr + 1 {
+                        println!("{}", board);
                         println!("Attack power is {}", attack_pwr);
                         println!("Solved in {} rounds with {} hps", rounds, sum);
                         return (rounds * sum).to_string()
@@ -434,6 +436,7 @@ impl crate::Puzzle for Puzzle15 {
 mod test {
     use super::*;
     use crate::Puzzle;
+    use lazy_static::lazy_static;
 
     const MOVE_EXAMPLE: &str = r#"#########
 #G..G..G#
@@ -461,6 +464,62 @@ mod test {
 #..G#E#
 #.....#
 #######"#;
+
+    lazy_static! {
+        static ref EXAMPLES: HashMap<&'static str, u32> = {
+            let mut m = HashMap::new();
+
+            m.insert(r#"
+#######
+#.G...#
+#...EG#
+#.#.#G#
+#..G#E#
+#.....#
+#######
+            "#, 4988);
+
+            m.insert(r#"
+#######
+#E..EG#
+#.#G.E#
+#E.##E#
+#G..#.#
+#..E#.#
+#######"#, 31284);
+
+            m.insert(r#"
+#######
+#E.G#.#
+#.#G..#
+#G.#.G#
+#G..#.#
+#...E.#
+#######"#, 3478);
+
+            m.insert(r#"
+#######
+#.E...#
+#.#..G#
+#.###.#
+#E#G#G#
+#...#G#
+#######"#, 6474);
+
+            m.insert(r#"
+#########
+#G......#
+#.E.#...#
+#..##..G#
+#...##..#
+#...#...#
+#.G...G.#
+#.....G.#
+######### "#, 1140);
+
+            m
+        };
+    }
 
     #[test]
     fn test_parse() {
@@ -494,8 +553,12 @@ mod test {
     }
 
     #[test]
-    fn test_part2() {
-        let pzl = Puzzle15 { board: parse(EXAMPLE.to_owned()) };
-        assert_eq!("4988", pzl.part2());
+    fn test_examples_part2() {
+
+        for (board, expected) in EXAMPLES.iter() {
+            let pzl = Puzzle15 { board: parse(board.to_string()) };
+            assert_eq!(expected.to_string(), pzl.part2());
+        }
+
     }
 }
