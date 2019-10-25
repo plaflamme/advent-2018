@@ -143,11 +143,6 @@ enum TurnOutcome {
     Alive(Unit, Option<MoveOutcome>, AttackOutcome)
 }
 
-enum RoundOutcome {
-    AllDone,
-    RoundDone(Vec<TurnOutcome>)
-}
-
 enum Outcome {
     ElfDied,
     Solved(u32, u32)
@@ -163,31 +158,23 @@ struct Board {
 
 impl Board {
 
-    fn solve(&mut self, stop_on_elf_death: bool) -> Outcome {
+    fn solve_part1(&mut self) -> Outcome {
         let mut rounds = 0;
         loop {
             println!("{}", self);
-            match self.round() {
-                RoundOutcome::AllDone => break,
-                RoundOutcome::RoundDone(outcomes) => {
-                    if stop_on_elf_death {
-                        let elf_died = outcomes.iter()
-                            .find(|turnOutcome| {
-                                match turnOutcome {
-                                    TurnOutcome::Dead(unit) => unit.kind == Kind::Elf,
-                                    _ => false
-                                }
-                            })
-                            .is_some();
-
-                        if elf_died { return Outcome::ElfDied }
-                    }
-                    rounds += 1
+            let outcomes = self.round();
+            let all_done = outcomes.iter().all(|outcome| {
+                match outcome {
+                    TurnOutcome::NoTargets => true,
+                    TurnOutcome::Dead(_) => true,
+                    _ => false
                 }
+            });
 
-
-            };
+            if all_done { break; }
+            rounds += 1
         }
+
         let sum: u32 = self.all_units.iter()
             .filter(|x| x.borrow().hit_pts > 0)
             .map(|x| x.borrow().hit_pts as u32)
@@ -196,19 +183,49 @@ impl Board {
         Outcome::Solved(rounds, sum)
     }
 
-    fn round(&mut self) -> RoundOutcome {
+    fn solve_part2(&mut self) -> Outcome {
+        let mut rounds = 0;
+        loop {
+            println!("{}", self);
+            let outcomes = self.round();
+
+            let elf_died = outcomes.iter().any(|outcome| {
+                match outcome {
+                    TurnOutcome::Dead(unit) => unit.kind == Kind::Elf,
+                    _ => false
+                }
+            });
+
+            if elf_died { return Outcome::ElfDied } else {
+                let all_done = outcomes.iter().all(|outcome| {
+                    match outcome {
+                        TurnOutcome::NoTargets => true,
+                        TurnOutcome::Dead(_) => true,
+                        _ => false
+                    }
+                });
+
+                if all_done { break; }
+                rounds += 1;
+            }
+        }
+
+        let sum: u32 = self.all_units.iter()
+            .filter(|x| x.borrow().hit_pts > 0)
+            .map(|x| x.borrow().hit_pts as u32)
+            .sum();
+
+        Outcome::Solved(rounds, sum)
+    }
+
+    fn round(&mut self) -> Vec<TurnOutcome> {
         self.all_units.sort_by_key(|x| x.borrow().pos);
         let mut turn_outcomes = Vec::new();
 
         for current_unit in self.all_units.iter() {
-            match self.turn(&current_unit) {
-                TurnOutcome::NoTargets => return RoundOutcome::AllDone,
-                outcome => {
-                    turn_outcomes.push(outcome);
-                }
-            }
+            turn_outcomes.push(self.turn(&current_unit));
         }
-        RoundOutcome::RoundDone(turn_outcomes)
+        turn_outcomes
     }
 
     fn turn(&self, current_unit: &RefCell<Unit>) -> TurnOutcome {
@@ -394,7 +411,7 @@ struct Puzzle15 {
 impl crate::Puzzle for Puzzle15 {
     fn part1(&self) -> String {
         let mut board = self.board.clone();
-        match board.solve(false) {
+        match board.solve_part1() {
             Outcome::Solved(rounds, sum) => (rounds * sum).to_string(),
             _ => panic!("unexpected outcome")
         }
@@ -409,7 +426,7 @@ impl crate::Puzzle for Puzzle15 {
             println!("Attack power is {}", attack_pwr);
             let mut board = self.board.clone();
             board.attack_pwr.insert(Kind::Elf, attack_pwr);
-            match board.solve(true) {
+            match board.solve_part2() {
                 Outcome::ElfDied => {
                     max_failed_pwr = attack_pwr;
                     match min_success_pwr {
@@ -540,7 +557,7 @@ mod test {
     fn test_example() {
         let mut board = parse(EXAMPLE.to_owned());
 
-        match board.solve(false) {
+        match board.solve_part1() {
             Outcome::ElfDied => panic!("unexpectd outcome"),
             Outcome::Solved(rounds, sum) => {
                 println!("{}", board);
