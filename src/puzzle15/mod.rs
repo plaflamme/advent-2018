@@ -107,8 +107,7 @@ impl Map {
         let shortest = pathfinding::directed::dijkstra::dijkstra(
             from,
             |other| {
-                let adjacents = self.adjacent_pts.get(other).cloned().unwrap_or(Vec::new());
-                adjacents.iter()
+                self.adjacent(&other).iter()
                     .cloned()
                     .filter(|pt| !excluding.contains(pt))
                     .map(|o| (o, 1))
@@ -168,6 +167,7 @@ impl Board {
     fn solve_part1(&mut self) -> Outcome {
         let mut rounds = 0;
         loop {
+            println!("Starting round {}", rounds + 1);
             println!("{}", self);
             match self.round() {
                 RoundOutcome::Full(_) => rounds += 1,
@@ -221,13 +221,8 @@ impl Board {
                 outcome => turn_outcomes.push(outcome)
             }
         }
-
-        if self.unit_count(Kind::Elf) == 0 || self.unit_count(Kind::Guard) == 0 {
-            RoundOutcome::Partial(turn_outcomes)
-        } else {
-            RoundOutcome::Full(turn_outcomes)
-        }
-
+        // If the last unit has a chance to finish, then the round is a full round even if one side wins at this point.
+        RoundOutcome::Full(turn_outcomes)
     }
 
     fn turn(&self, current_unit: &RefCell<Unit>) -> TurnOutcome {
@@ -285,18 +280,12 @@ impl Board {
             })
             .collect::<Vec<_>>();
 
-        reachable.sort_by_key(|x| x.pts.len());
+        // Sort by length and then reading order
+        reachable.sort_by_key(|x| (x.pts.len(), x.origin().clone()));
 
         if reachable.is_empty() { MoveOutcome::Unreachable } else {
-            let shortest_length = reachable.first().unwrap().pts.len();
-            // only consider nearest
-            let mut nearest = reachable.iter().filter(|x| x.pts.len() == shortest_length).collect::<Vec<_>>();
-
-            // sort the paths in reading order, this is our
-            nearest.sort_by_key(|path| path.origin());
-
-            let move_to = nearest.first().unwrap().origin();
-
+            let chosen_nearest = reachable.first().unwrap();
+            let move_to = chosen_nearest.origin();
             let from = unit.borrow().pos.clone();
             unit.borrow_mut().pos = *move_to;
             MoveOutcome::Moved(from, *move_to)
@@ -325,6 +314,7 @@ impl Board {
         }
     }
 
+    // all Pts "in range" of the specied Pt
     fn in_range(&self, pos: &Pt) -> Vec<Pt> {
         let current_pos = self.current_unit_positions();
         self.map.adjacent(pos)
@@ -545,24 +535,25 @@ mod test {
             m
         };
     }
-/*
-    #[test]
-    fn test_parse() {
-        let printed = format!("{}", parse(MOVE_EXAMPLE.to_owned()));
-        assert_eq!(MOVE_EXAMPLE, printed);
-    }
 
     #[test]
     fn test_move() {
+        let expected = parse(MOVE_3_EXAMPLE.to_owned());
         let mut board = parse(MOVE_EXAMPLE.to_owned());
         board.round();
         board.round();
         board.round();
-        assert_eq!(MOVE_3_EXAMPLE, format!("{}", board));
+
+        let mut e = expected.all_units.iter().map(|x| (x.borrow().kind, x.borrow().pos)).collect::<Vec<_>>();
+        e.sort();
+        let mut b = board.all_units.iter().map(|x| (x.borrow().kind, x.borrow().pos)).collect::<Vec<_>>();
+        b.sort();
+
+        assert_eq!(e, b);
     }
-*/
+
     #[test]
-    fn test_example() {
+    fn test_part1() {
         let mut board = parse(EXAMPLE.to_owned());
 
         match board.solve_part1() {
@@ -578,7 +569,7 @@ mod test {
     }
 
     #[test]
-    fn test_examples_part2() {
+    fn test_part2() {
 
         for (board, expected) in EXAMPLES.iter() {
             let pzl = Puzzle15 { board: parse(board.to_string()) };
