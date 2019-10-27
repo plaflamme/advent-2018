@@ -1,9 +1,12 @@
 use std::str::FromStr;
-use itertools::Itertools;
+use itertools::{Itertools, cloned};
 use regex::Regex;
 use std::ops::{Index, IndexMut};
+use std::collections::HashSet;
+use std::iter::FromIterator;
 
 #[allow(non_camel_case_types)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 enum OpCode {
     addr,
     addi,
@@ -30,7 +33,35 @@ enum OpCode {
 }
 
 impl OpCode {
-    fn run(&self, mut bench: Bench, a: &u8, b: &u8, c: &u8) {
+    fn all() -> Vec<OpCode> {
+        use OpCode::*;
+        vec![
+            addr,
+            addi,
+
+            mulr,
+            muli,
+
+            banr,
+            bani,
+
+            borr,
+            bori,
+
+            setr,
+            seti,
+
+            gtir,
+            gtri,
+            gtrr,
+
+            eqir,
+            eqri,
+            eqrr,
+        ]
+    }
+
+    fn run(&self, bench: &mut Bench, a: &u8, b: &u8, c: &u8) {
         use OpCode::*;
         match self {
             // addr (add register) stores into register C the result of adding register A and register B.
@@ -153,6 +184,18 @@ impl Valid {
             after: Bench::from_str(lines[2]).expect(""),
         }
     }
+
+    fn matching_opcodes(&self) -> HashSet<OpCode> {
+        OpCode::all()
+            .iter()
+            .cloned()
+            .filter(|opcode| {
+                let mut bench = &mut self.before.clone();
+                opcode.run(bench, &self.instruction.a, &self.instruction.b, &self.instruction.c);
+                *bench == self.after
+            })
+            .collect()
+    }
 }
 
 fn parse(input: &str) -> (Vec<Valid>, Vec<Instr>) {
@@ -206,7 +249,11 @@ struct Puzzle16 {
 
 impl crate::Puzzle for Puzzle16 {
     fn part1(&self) -> String {
-        unimplemented!()
+        self.part1
+            .iter()
+            .filter(|valid| valid.matching_opcodes().len() >= 3)
+            .count()
+            .to_string()
     }
 
     fn part2(&self) -> String {
@@ -252,5 +299,11 @@ After:  [3, 2, 2, 1]
         let (part1, part2) = parse(PARSE_EXAMPLE);
         assert_eq!(2, part1.len());
         assert_eq!(2, part2.len());
+    }
+
+    #[test]
+    fn test_example() {
+        let valid = Valid::from(&PART1_EXAMPLE.lines().collect());
+        assert_eq!(HashSet::from_iter(vec![OpCode::addi, OpCode::mulr, OpCode::seti]), valid.matching_opcodes());
     }
 }

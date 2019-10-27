@@ -45,6 +45,7 @@ fn main() {
         puzzle13::mk,
         puzzle14::mk,
         puzzle15::mk,
+        puzzle16::mk,
     );
     let args = Cli::from_args();
 
