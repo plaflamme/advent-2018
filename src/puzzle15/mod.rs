@@ -1,7 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BinaryHeap};
 use std::fmt::{Display, Error, Formatter};
 use std::iter;
 use std::cell::RefCell;
+use std::cmp::Reverse;
 
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
 struct Pt { top: u16, left: u16 }
@@ -97,7 +98,7 @@ impl Map {
                     _ => false
                 }
             });
-            adjacent_pts.insert(pt.clone(), others);
+            if !others.is_empty() { adjacent_pts.insert(pt.clone(), others); };
         }
 
         Map { locs, adjacent_pts }
@@ -270,7 +271,7 @@ impl Board {
         //   From those paths, we can take the shortest ones and then pick the one where the origin is in reading order.
         let first_steps = self.in_range(&unit.borrow().pos);
 
-        let mut reachable = first_steps
+        let chosen = first_steps
             .iter()
             .flat_map(|origin| {
                 in_range
@@ -278,18 +279,19 @@ impl Board {
                     .flat_map(|pt| self.map.shortest_path(&origin, pt, &excluding))
                     .collect::<Vec<_>>()
             })
-            .collect::<Vec<_>>();
+            .map(|path| Reverse((path.pts.len(), path.origin().clone())))
+            .collect::<BinaryHeap<_>>()
+            .peek()
+            .map(|Reverse((_, pt))| *pt);
 
-        // Sort by length and then reading order
-        reachable.sort_by_key(|x| (x.pts.len(), x.origin().clone()));
-
-        if reachable.is_empty() { MoveOutcome::Unreachable } else {
-            let chosen_nearest = reachable.first().unwrap();
-            let move_to = chosen_nearest.origin();
-            let from = unit.borrow().pos.clone();
-            unit.borrow_mut().pos = *move_to;
-            MoveOutcome::Moved(from, *move_to)
-        }
+         match chosen {
+             None => MoveOutcome::Unreachable,
+             Some(move_to) => {
+                 let from = unit.borrow().pos.clone();
+                 unit.borrow_mut().pos = move_to;
+                 MoveOutcome::Moved(from, move_to)
+             }
+         }
     }
 
     fn attack(&self, attacker: &RefCell<Unit>, potential_targets: &Vec<&RefCell<Unit>>) -> AttackOutcome {
