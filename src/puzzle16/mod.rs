@@ -1,9 +1,98 @@
 use std::str::FromStr;
 use itertools::Itertools;
 use regex::Regex;
+use std::ops::{Index, IndexMut};
 
-#[derive(PartialEq, Eq, Debug)]
+#[allow(non_camel_case_types)]
+enum OpCode {
+    addr,
+    addi,
+
+    mulr,
+    muli,
+
+    banr,
+    bani,
+
+    borr,
+    bori,
+
+    setr,
+    seti,
+
+    gtir,
+    gtri,
+    gtrr,
+
+    eqir,
+    eqri,
+    eqrr,
+}
+
+impl OpCode {
+    fn run(&self, mut bench: Bench, a: &u8, b: &u8, c: &u8) {
+        use OpCode::*;
+        match self {
+            // addr (add register) stores into register C the result of adding register A and register B.
+            addr => bench[c] = bench[a] + bench[b],
+            // addi (add immediate) stores into register C the result of adding register A and value B.
+            addi => bench[c] = bench[a] + *b,
+
+            // mulr (multiply register) stores into register C the result of multiplying register A and register B.
+            mulr => bench[c] = bench[a] * bench[b],
+            // muli (multiply immediate) stores into register C the result of multiplying register A and value B.
+            muli => bench[c] = bench[a] * *b,
+
+            // banr (bitwise AND register) stores into register C the result of the bitwise AND of register A and register B.
+            banr => bench[c] = bench[a] & bench[b],
+            // bani (bitwise AND immediate) stores into register C the result of the bitwise AND of register A and value B.
+            bani => bench[c] = bench[a] & *b,
+
+            // borr (bitwise OR register) stores into register C the result of the bitwise OR of register A and register B.
+            borr => bench[c] = bench[a] | bench[b],
+            // bori (bitwise OR immediate) stores into register C the result of the bitwise OR of register A and value B.
+            bori => bench[c] = bench[a] | *b,
+
+            // setr (set register) copies the contents of register A into register C. (Input B is ignored.)
+            setr => bench[c] = bench[a],
+            // seti (set immediate) stores value A into register C. (Input B is ignored.)
+            seti => bench[c] = *a,
+
+            // gtir (greater-than immediate/register) sets register C to 1 if value A is greater than register B. Otherwise, register C is set to 0.
+            gtir => bench[c] = if *a > bench[b] { 1 } else { 0 },
+            // gtri (greater-than register/immediate) sets register C to 1 if register A is greater than value B. Otherwise, register C is set to 0.
+            gtri => bench[c] = if bench[a] > *b { 1 } else { 0 },
+            // gtrr (greater-than register/register) sets register C to 1 if register A is greater than register B. Otherwise, register C is set to 0.
+            gtrr => bench[c] = if bench[a] > bench[b] { 1 } else { 0 },
+
+            // eqir (equal immediate/register) sets register C to 1 if value A is equal to register B. Otherwise, register C is set to 0.
+            eqir => bench[c] = if *a == bench[b] { 1 } else { 0 },
+            // eqri (equal register/immediate) sets register C to 1 if register A is equal to value B. Otherwise, register C is set to 0.
+            eqri => bench[c] = if bench[a] == *b { 1 } else { 0 },
+            // eqrr (equal register/register) sets register C to 1 if register A is equal to register B. Otherwise, register C is set to 0.
+            eqrr => bench[c] = if bench[a] == bench[b] { 1 } else { 0 },
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
 struct Bench([u8; 4]);
+
+impl Index<&u8> for Bench {
+    type Output = u8;
+
+    fn index(&self, index: &u8) -> &Self::Output {
+        assert!(*index < 4, format!("Register should be [0,4[, but was {}", index));
+        &self.0[*index as usize]
+    }
+}
+
+impl IndexMut<&u8> for Bench {
+    fn index_mut(&mut self, index: &u8) -> &mut Self::Output {
+        assert!(*index < 4, format!("Register should be [0,4[, but was {}", index));
+        &mut self.0[*index as usize]
+    }
+}
 
 impl FromStr for Bench {
     type Err = std::num::ParseIntError;
