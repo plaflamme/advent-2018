@@ -2,7 +2,7 @@ use std::str::FromStr;
 use itertools::{Itertools, cloned};
 use regex::Regex;
 use std::ops::{Index, IndexMut};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 
 #[allow(non_camel_case_types)]
@@ -61,7 +61,7 @@ impl OpCode {
         ]
     }
 
-    fn run(&self, bench: &mut Bench, a: &u8, b: &u8, c: &u8) {
+    fn run(&self, bench: &mut Bench, a: &u16, b: &u16, c: &u16) {
         use OpCode::*;
         match self {
             // addr (add register) stores into register C the result of adding register A and register B.
@@ -106,20 +106,20 @@ impl OpCode {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
-struct Bench([u8; 4]);
+#[derive(PartialEq, Eq, Default, Clone, Debug)]
+struct Bench([u16; 4]);
 
-impl Index<&u8> for Bench {
-    type Output = u8;
+impl Index<&u16> for Bench {
+    type Output = u16;
 
-    fn index(&self, index: &u8) -> &Self::Output {
+    fn index(&self, index: &u16) -> &Self::Output {
         assert!(*index < 4, format!("Register should be [0,4[, but was {}", index));
         &self.0[*index as usize]
     }
 }
 
-impl IndexMut<&u8> for Bench {
-    fn index_mut(&mut self, index: &u8) -> &mut Self::Output {
+impl IndexMut<&u16> for Bench {
+    fn index_mut(&mut self, index: &u16) -> &mut Self::Output {
         assert!(*index < 4, format!("Register should be [0,4[, but was {}", index));
         &mut self.0[*index as usize]
     }
@@ -134,22 +134,42 @@ impl FromStr for Bench {
         Ok(
             Bench(
                 [
-                    u8::from_str(&caps[1])?,
-                    u8::from_str(&caps[2])?,
-                    u8::from_str(&caps[3])?,
-                    u8::from_str(&caps[4])?
+                    u16::from_str(&caps[1])?,
+                    u16::from_str(&caps[2])?,
+                    u16::from_str(&caps[3])?,
+                    u16::from_str(&caps[4])?
                 ]
             )
         )
     }
 }
 
+struct Cpu {
+    codes: HashMap<u8, OpCode>,
+    bench: Bench
+}
+
+impl Cpu {
+    fn new(codes: &HashMap<u8, OpCode>) -> Self {
+        Cpu { codes: codes.clone(), bench: Bench::default() }
+    }
+
+    fn run(&mut self, program: &Vec<Instr>) {
+        program
+            .iter()
+            .for_each(|i| {
+               let opcode = self.codes.get(&i.code).unwrap();
+                opcode.run(&mut self.bench, &i.a, &i.b, &i.c);
+            });
+    }
+}
+
 #[derive(PartialEq, Eq, Debug)]
 struct Instr {
     code: u8,
-    a: u8,
-    b: u8,
-    c: u8
+    a: u16,
+    b: u16,
+    c: u16
 }
 
 impl FromStr for Instr {
@@ -160,9 +180,9 @@ impl FromStr for Instr {
         Ok(
             Instr {
                 code: u8::from_str(parts[0])?,
-                a: u8::from_str(parts[1])?,
-                b: u8::from_str(parts[2])?,
-                c: u8::from_str(parts[3])?,
+                a: u16::from_str(parts[1])?,
+                b: u16::from_str(parts[2])?,
+                c: u16::from_str(parts[3])?,
             }
         )
     }
@@ -196,6 +216,61 @@ impl Valid {
             })
             .collect()
     }
+}
+
+fn resolve(unassigned: &HashMap<u8, HashSet<OpCode>>, assigned: &HashMap<u8, OpCode>) -> Option<HashMap<u8, OpCode>> {
+    // base cases
+    //   unassigned is empty
+    //   unassigned has an empty set
+
+    if unassigned.is_empty() { Some(assigned.clone()) }
+    else if unassigned.iter().find(|(_, possible)| possible.is_empty()).is_some() { None }
+    else {
+        // pick the next code and try one assignment from its possible assignments
+        let mut remains = unassigned.iter().collect::<Vec<_>>();
+        remains.sort_by_key(|(_, possible)| possible.len());
+
+        for (code, possible) in remains {
+            for opcode in possible {
+                let mut new_assignment = assigned.clone();
+                new_assignment.insert(*code, opcode.clone());
+                let new_unassigned = unassigned.clone()
+                    .iter_mut()
+                    .filter(|(other, _)| *other != code)
+                    .map(|(code, possible)| {
+                        possible.remove(opcode);
+                        (*code, possible.clone())
+                    })
+                    .collect::<HashMap<u8, HashSet<OpCode>>>();
+
+                match resolve(&new_unassigned, &new_assignment) {
+                    None => (),
+                    sol@Some(_) => return sol
+                };
+            }
+        }
+        None
+    }
+}
+
+fn resolve_opcodes(input: &Vec<Valid>) -> Option<HashMap<u8, OpCode>> {
+    let mut possible = HashMap::new();
+    input
+        .iter()
+        .for_each(|valid| {
+            let matching = valid.matching_opcodes();
+
+            match possible.get_mut(&valid.instruction.code) {
+                None => {
+                    possible.insert(valid.instruction.code, matching);
+                },
+                Some(current) => {
+                    current.retain(|opcode| matching.contains(opcode));
+                }
+            };
+        });
+
+    resolve(&possible, &HashMap::new())
 }
 
 fn parse(input: &str) -> (Vec<Valid>, Vec<Instr>) {
@@ -257,7 +332,14 @@ impl crate::Puzzle for Puzzle16 {
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        match resolve_opcodes(&self.part1) {
+            None => panic!("couldn't assign codes to opcodes."),
+            Some(assignement) => {
+                let mut cpu = Cpu::new(&assignement);
+                cpu.run(&self.part2);
+                cpu.bench[&0].to_string()
+            }
+        }
     }
 }
 
