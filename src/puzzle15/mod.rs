@@ -50,6 +50,15 @@ enum Kind {
     Elf
 }
 
+impl Display for Kind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            Kind::Guard => write!(f, "G"),
+            Kind::Elf =>  write!(f, "E")
+        }
+    }
+}
+
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
 struct Unit {
     pos: Pt,
@@ -264,9 +273,6 @@ impl Board {
             })
             .collect::<Vec<_>>();
 
-        let mut excluding = self.current_unit_positions();
-        excluding.remove(&unit.borrow().pos);
-
         // Because our shortest path algorithm only returns one option, we have to instead compute the path from each possible first step around this unit
         //   From those paths, we can take the shortest ones and then pick the one where the origin is in reading order.
         let first_steps = self.in_range(&unit.borrow().pos);
@@ -276,7 +282,7 @@ impl Board {
             .flat_map(|origin| {
                 in_range
                     .iter()
-                    .flat_map(|pt| self.map.shortest_path(&origin, pt, &excluding))
+                    .flat_map(|pt| self.map.shortest_path(&origin, pt, &self.current_unit_positions()))
                     .collect::<Vec<_>>()
             })
             .map(|path| Reverse((path.pts.len(), path.origin().clone())))
@@ -297,22 +303,23 @@ impl Board {
     fn attack(&self, attacker: &RefCell<Unit>, potential_targets: &Vec<&RefCell<Unit>>) -> AttackOutcome {
         let mut in_range = potential_targets
             .iter()
-            .filter(|target| target.borrow().pos.distance(&attacker.borrow().pos) == 1)
+            .filter(|target| {
+                self.map.adjacent(&target.borrow().pos).contains(&attacker.borrow().pos)
+            })
             .collect::<Vec<_>>();
 
-        if in_range.is_empty() { AttackOutcome::NotInRange } else {
-            // sort by hit pts, then by reading order
-            in_range.sort_by(|lhs_ref, rhs_ref| {
-                let lhs = lhs_ref.borrow();
-                let rhs = rhs_ref.borrow();
-                lhs.hit_pts.cmp(&rhs.hit_pts).then(lhs.pos.cmp(&rhs.pos))
-            });
+        in_range.sort_by(|lhs_ref, rhs_ref| {
+            let lhs = lhs_ref.borrow();
+            let rhs = rhs_ref.borrow();
+            lhs.hit_pts.cmp(&rhs.hit_pts).then(lhs.pos.cmp(&rhs.pos))
+        });
 
-            let target = in_range.first().expect("Unexpected empty units in range");
-
-            target.borrow_mut().hit_pts -= *self.attack_pwr.get(&attacker.borrow().kind).unwrap_or(&3) as i16;
-
-            AttackOutcome::Attacked(target.borrow().clone())
+        match in_range.first() {
+            None => AttackOutcome::NotInRange,
+            Some(target) => {
+                target.borrow_mut().hit_pts -= *self.attack_pwr.get(&attacker.borrow().kind).unwrap_or(&3) as i16;
+                AttackOutcome::Attacked(target.borrow().clone())
+            }
         }
     }
 
@@ -350,17 +357,12 @@ impl Display for Board {
         pts.iter()
             .for_each(|(pt, loc)| {
                 if pt.left == 0 && pt.top != 0 {
-                    let summary = line_units.drain(0..).map(|u| format!("{:?}({})", u.borrow().kind, u.borrow().hit_pts)).collect::<Vec<_>>().join(" ");
-                    writeln!(f, " {}", summary).unwrap();
+                    let summary = line_units.drain(0..).map(|u| format!("{}({})", u.borrow().kind, u.borrow().hit_pts)).collect::<Vec<_>>().join(", ");
+                    writeln!(f, "   {}", summary).unwrap();
                 }
                 if let Some(unit) = self.all_units.iter().find(|u| u.borrow().hit_pts > 0 && u.borrow().pos == **pt) {
-                    let dead = unit.borrow().hit_pts <= 0;
-                    if !dead { line_units.push(unit); }
-                    let c = match unit.borrow().kind {
-                        Kind::Guard => if dead { 'g' } else { 'G' },
-                        Kind::Elf => if dead { 'e' } else { 'E' },
-                    };
-                    write!(f, "{}", c).unwrap()
+                    line_units.push(unit);
+                    write!(f, "{}", unit.borrow().kind).unwrap()
                 } else {
                     let c = match loc {
                         Loc::Wall => '#',
