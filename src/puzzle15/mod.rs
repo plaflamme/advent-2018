@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, BinaryHeap};
 use std::fmt::{Display, Error, Formatter};
 use std::iter;
 use std::cell::RefCell;
-use std::cmp::Reverse;
+use std::cmp::{Reverse, Ordering};
 
 #[derive(Hash, PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Copy)]
 struct Pt { top: u16, left: u16 }
@@ -72,7 +72,7 @@ impl Unit {
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Debug, Clone)]
+#[derive(Hash, PartialEq, Eq, Ord, Debug, Clone)]
 struct Path {
     pts: Vec<Pt>
 }
@@ -87,6 +87,19 @@ impl Path {
         self.pts.last().expect("empty path")
     }
 }
+
+impl PartialOrd for Path {
+
+    // This part is pretty crucial and wasn't very clear in the instructions
+    //   The best path is the shortest, but tie breaking is reading order of destination and then first step
+    //   My original solution was only checking first step which works for all test examples
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.pts.len().cmp(&other.pts.len())
+            .then(self.destination().cmp(other.destination()))
+            .then(self.origin().cmp(other.origin())))
+    }
+}
+
 
 #[derive(Debug, Clone)]
 struct Map {
@@ -285,14 +298,15 @@ impl Board {
                     .flat_map(|pt| self.map.shortest_path(&origin, pt, &self.current_unit_positions()))
                     .collect::<Vec<_>>()
             })
-            .map(|path| Reverse((path.pts.len(), path.origin().clone())))
+            .map(|path| Reverse(path))
             .collect::<BinaryHeap<_>>()
             .peek()
-            .map(|Reverse((_, pt))| *pt);
+            .map(|Reverse(path)| path.clone());
 
          match chosen {
              None => MoveOutcome::Unreachable,
-             Some(move_to) => {
+             Some(path) => {
+                 let move_to = *path.origin();
                  let from = unit.borrow().pos.clone();
                  unit.borrow_mut().pos = move_to;
                  MoveOutcome::Moved(from, move_to)
