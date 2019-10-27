@@ -15,6 +15,7 @@ mod puzzle12;
 mod puzzle13;
 mod puzzle14;
 mod puzzle15;
+mod puzzle16;
 
 pub trait Puzzle {
     fn part1(&self) -> String;
