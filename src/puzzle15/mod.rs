@@ -11,10 +11,6 @@ impl Pt {
         Pt { top, left }
     }
 
-    fn distance(&self, other: &Pt) -> u16 {
-        ((self.left as i32 - other.left as i32).abs() + (self.top as i32 - other.top as i32).abs()) as u16
-    }
-
     fn pt_left(&self) -> Option<Self> {
         if self.left > 0 { Some(Pt { top: self.top, left: self.left - 1 }) } else { None }
     }
@@ -353,13 +349,6 @@ impl Board {
             .filter(|x| x.borrow().hit_pts > 0)
             .map(|x| x.borrow().pos)
             .collect::<HashSet<_>>()
-    }
-
-    fn unit_count(&self, kind: Kind) -> usize {
-        self.all_units
-            .iter()
-            .filter(|x| x.borrow().hit_pts > 0 && x.borrow().kind == kind)
-            .count()
     }
 }
 
