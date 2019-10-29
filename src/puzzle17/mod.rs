@@ -2,6 +2,7 @@ use std::ops::{Range, RangeInclusive};
 use regex::Regex;
 use std::str::FromStr;
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter, Error};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct ClayRange { x: RangeInclusive<i16>, y: RangeInclusive<i16> }
@@ -59,6 +60,17 @@ enum Soil {
     Clay
 }
 
+impl Display for Soil {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        Ok(
+            match self {
+                Soil::Sand => write!(f, ".")?,
+                Soil::Clay => write!(f, "#")?,
+            }
+        )
+    }
+}
+
 struct Ground {
     min_pos: Pt,
     max_pos: Pt,
@@ -98,8 +110,27 @@ impl Ground {
         Ground { min_pos, max_pos, clay_pos }
     }
 
-    fn soil_at(&self, pos: Pt) -> Soil {
-        if self.clay_pos.contains(&pos) { Soil::Clay } else { Soil::Sand }
+    fn soil_at(&self, pos: &Pt) -> Soil {
+        if self.clay_pos.contains(pos) { Soil::Clay } else { Soil::Sand }
+    }
+}
+
+impl Display for Ground {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let source = Pt::new(500,self.min_pos.y-1);
+        for y in self.min_pos.y-1..=self.max_pos.y+1 {
+            for x in self.min_pos.x-1..=self.max_pos.x+1 {
+                let pt = Pt::new(x, y);
+                if pt == source {
+                    write!(f, "+")?;
+                } else {
+                    write!(f, "{}", self.soil_at(&pt))?;
+                }
+            }
+            writeln!(f, "")?;
+        }
+
+        Ok(())
     }
 }
 
@@ -121,6 +152,8 @@ struct Puzzle17 {
 
 impl crate::Puzzle for Puzzle17 {
     fn part1(&self) -> String {
+        let ground = Ground::new(&self.ranges);
+        println!("{}", ground);
         unimplemented!()
     }
 
@@ -165,9 +198,32 @@ y=13, x=498..504"#;
         assert_eq!(Pt::new(495,1), ground.min_pos);
         assert_eq!(Pt::new(506,13), ground.max_pos);
 
-        assert_eq!(Soil::Clay, ground.soil_at(Pt::new(495, 7)));
-        assert_eq!(Soil::Clay, ground.soil_at(Pt::new(501, 3)));
-        assert_eq!(Soil::Clay, ground.soil_at(Pt::new(501, 7)));
-        assert_eq!(Soil::Sand, ground.soil_at(Pt::new(1, 1)));
+        assert_eq!(Soil::Clay, ground.soil_at(&Pt::new(495, 7)));
+        assert_eq!(Soil::Clay, ground.soil_at(&Pt::new(501, 3)));
+        assert_eq!(Soil::Clay, ground.soil_at(&Pt::new(501, 7)));
+        assert_eq!(Soil::Sand, ground.soil_at(&Pt::new(1, 1)));
+    }
+
+    const EXPECTED: &str = r#"..............
+............#.
+.#..#.......#.
+.#..#..#......
+.#..#..#......
+.#.....#......
+.#.....#......
+.#######......
+..............
+..............
+....#.....#...
+....#.....#...
+....#.....#...
+....#######...
+..............
+"#;
+
+    #[test]
+    fn test_ground_display() {
+        let ground = Ground::new(&parse(EXAMPLE));
+        assert_eq!(EXPECTED, format!("{}", ground));
     }
 }
