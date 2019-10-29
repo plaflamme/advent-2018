@@ -1,9 +1,10 @@
 use std::ops::{Range, RangeInclusive};
 use regex::Regex;
 use std::str::FromStr;
+use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, PartialEq, Eq)]
-struct ClayRange { x: RangeInclusive<u16>, y: RangeInclusive<u16> }
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct ClayRange { x: RangeInclusive<i16>, y: RangeInclusive<i16> }
 
 impl FromStr for ClayRange {
     type Err = std::num::ParseIntError;
@@ -12,11 +13,11 @@ impl FromStr for ClayRange {
         let re = Regex::new(r"^(.)=(\d+), .=(\d+)\.\.(\d+)$").unwrap();
         let caps = re.captures(s).expect("invalid line");
 
-        let not_range = u16::from_str(&caps[2])?;
+        let not_range = i16::from_str(&caps[2])?;
         let first_range = not_range..=not_range;
 
-        let start = u16::from_str(&caps[3])?;
-        let end = u16::from_str(&caps[4])?;
+        let start = i16::from_str(&caps[3])?;
+        let end = i16::from_str(&caps[4])?;
         let range = start..=end;
 
         match &caps[1] {
@@ -24,6 +25,81 @@ impl FromStr for ClayRange {
             "y" => Ok(ClayRange { x: range, y: first_range }),
             _ => panic!("invalid coord")
         }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Copy, Clone)]
+struct Pt {
+    x: i16,
+    y: i16
+}
+
+impl Pt {
+
+    fn new(x: i16, y: i16) -> Pt { Pt {x, y} }
+
+    fn max() -> Pt { Pt::new(std::i16::MAX, std::i16::MAX) }
+    fn min() -> Pt { Pt::new(std::i16::MIN, std::i16::MIN) }
+
+    fn left(&self, by: i16) -> Pt { Pt { x: self.x - by, y: self.y } }
+    fn right(&self, by: i16) -> Pt {
+        Pt { x: self.x + by, y: self.y }
+    }
+    fn top(&self, by: i16) -> Pt {
+        Pt { x: self.x, y: self.y - by }
+    }
+    fn down(&self, by: i16) -> Pt {
+        Pt { x: self.x, y: self.y + by }
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
+enum Soil {
+    Sand,
+    Clay
+}
+
+struct Ground {
+    min_pos: Pt,
+    max_pos: Pt,
+    clay_pos: HashSet<Pt>
+}
+
+impl Ground {
+    fn new(clay: &Vec<ClayRange>) -> Self {
+
+        let mut min_pos = Pt::max();
+        let mut max_pos = Pt::min();
+        let mut clay_pos = HashSet::new();
+
+        for range in clay {
+            for x in range.x.clone() {
+                for y in range.y.clone() {
+                    let pt = Pt::new(x,y);
+
+                    if pt.x < min_pos.x {
+                        min_pos.x = pt.x
+                    }
+                    if pt.y < min_pos.y {
+                        min_pos.y = pt.y
+                    }
+
+                    if pt.x > max_pos.x {
+                        max_pos.x = pt.x
+                    }
+                    if pt.y > max_pos.y {
+                        max_pos.y = pt.y
+                    }
+                    clay_pos.insert(pt);
+                }
+            }
+        }
+
+        Ground { min_pos, max_pos, clay_pos }
+    }
+
+    fn soil_at(&self, pos: Pt) -> Soil {
+        if self.clay_pos.contains(&pos) { Soil::Clay } else { Soil::Sand }
     }
 }
 
@@ -80,5 +156,18 @@ y=13, x=498..504"#;
             ClayRange { x: 498..=504, y: 13..=13 },
         ];
         assert_eq!(expected, parsed);
+    }
+
+    #[test]
+    fn test_ground() {
+        let ground = Ground::new(&parse(EXAMPLE));
+
+        assert_eq!(Pt::new(495,1), ground.min_pos);
+        assert_eq!(Pt::new(506,13), ground.max_pos);
+
+        assert_eq!(Soil::Clay, ground.soil_at(Pt::new(495, 7)));
+        assert_eq!(Soil::Clay, ground.soil_at(Pt::new(501, 3)));
+        assert_eq!(Soil::Clay, ground.soil_at(Pt::new(501, 7)));
+        assert_eq!(Soil::Sand, ground.soil_at(Pt::new(1, 1)));
     }
 }
