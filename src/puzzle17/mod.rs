@@ -1,8 +1,9 @@
-use std::ops::{Range, RangeInclusive};
+use std::ops::RangeInclusive;
 use regex::Regex;
 use std::str::FromStr;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter, Error};
+use std::iter::FromIterator;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct ClayRange { x: RangeInclusive<i16>, y: RangeInclusive<i16> }
@@ -42,39 +43,67 @@ impl Pt {
     fn max() -> Pt { Pt::new(std::i16::MAX, std::i16::MAX) }
     fn min() -> Pt { Pt::new(std::i16::MIN, std::i16::MIN) }
 
-    fn left(&self, by: i16) -> Pt { Pt { x: self.x - by, y: self.y } }
-    fn right(&self, by: i16) -> Pt {
+    fn left_by(&self, by: i16) -> Pt { Pt { x: self.x - by, y: self.y } }
+    fn left(&self) -> Pt { self.left_by(1) }
+    fn right_by(&self, by: i16) -> Pt {
         Pt { x: self.x + by, y: self.y }
     }
+    fn right(&self) -> Pt { self.right_by(1) }
+
     fn top(&self, by: i16) -> Pt {
         Pt { x: self.x, y: self.y - by }
     }
-    fn down(&self, by: i16) -> Pt {
+
+    fn down_by(&self, by: i16) -> Pt {
         Pt { x: self.x, y: self.y + by }
     }
+    fn down(&self) -> Pt { self.down_by(1) }
+}
+
+// A tile that water went through
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
+enum Water {
+    Flowing, // |
+    Settled  // ~
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 enum Soil {
-    Sand,
+    Sand(Option<Water>),
     Clay
+}
+
+impl Soil {
+    fn blocks_flow(&self) -> bool {
+        match self {
+            Soil::Sand(None) | Soil::Sand(Some(Water::Flowing)) => false,
+            _ => true
+        }
+    }
 }
 
 impl Display for Soil {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         Ok(
             match self {
-                Soil::Sand => write!(f, ".")?,
+                Soil::Sand(None) => write!(f, ".")?,
+                Soil::Sand(Some(Water::Flowing)) => write!(f, "|")?,
+                Soil::Sand(Some(Water::Settled)) => write!(f, "~")?,
                 Soil::Clay => write!(f, "#")?,
             }
         )
     }
 }
 
+enum WaterFlow {
+    Closed(Vec<Pt>),
+    Opened(Vec<Pt>) // last Pt allows flowing downwards
+}
+
 struct Ground {
     min_pos: Pt,
     max_pos: Pt,
-    clay_pos: HashSet<Pt>
+    soil: HashMap<Pt, Soil>
 }
 
 impl Ground {
@@ -82,7 +111,7 @@ impl Ground {
 
         let mut min_pos = Pt::max();
         let mut max_pos = Pt::min();
-        let mut clay_pos = HashSet::new();
+        let mut soil = HashMap::new();
 
         for range in clay {
             for x in range.x.clone() {
@@ -102,17 +131,57 @@ impl Ground {
                     if pt.y > max_pos.y {
                         max_pos.y = pt.y
                     }
-                    clay_pos.insert(pt);
+                    soil.insert(pt, Soil::Clay);
                 }
             }
         }
 
-        Ground { min_pos, max_pos, clay_pos }
+        Ground { min_pos, max_pos, soil }
+    }
+
+    fn out_of_bounds(&self, pt: &Pt) -> bool {
+        pt.x < self.min_pos.x ||
+            pt.x > self.max_pos.x ||
+            pt.y < self.min_pos.y ||
+            pt.y > self.max_pos.y
     }
 
     fn soil_at(&self, pos: &Pt) -> Soil {
-        if self.clay_pos.contains(pos) { Soil::Clay } else { Soil::Sand }
+        match self.soil.get(pos) {
+            Some(soil) => *soil,
+            None => Soil::Sand(None)
+        }
     }
+
+    // not used, keeping it around for the iterator code.
+    fn flow_down_iter(&self, start: &Pt) -> impl Iterator<Item = Pt> + '_ {
+        let mut current = *start;
+        std::iter::from_fn(move || {
+            let down = current.down();
+            if self.out_of_bounds(&down) || self.soil_at(&down).blocks_flow() { None } else {
+                let tmp = current;
+                current = down;
+                Some(tmp)
+            }
+        })
+    }
+
+    fn flow_down(&self, start: &Pt) -> WaterFlow {
+        let mut flow = Vec::new();
+        let mut current = *start;
+        loop {
+            flow.push(current);
+            let down = current.down();
+            if self.out_of_bounds(&down) {
+                break WaterFlow::Opened(flow.clone())
+            } else if self.soil_at(&down).blocks_flow() {
+                break WaterFlow::Closed(flow.clone())
+            } else {
+                current = down;
+            }
+        }
+    }
+
 }
 
 impl Display for Ground {
@@ -131,6 +200,33 @@ impl Display for Ground {
         }
 
         Ok(())
+    }
+}
+
+
+// a flow outcome tells us which new tiles are wet and new flows to consider
+#[derive(PartialEq, Eq, Debug, Clone)]
+enum FlowOutcome {
+    CannotSettle(HashSet<Pt>),
+    // once settled, a flow has made some tiles wet and can create 1 or 2 new flows (left and right)
+    Settled(HashMap<Pt, Water>, Vec<Flow>)
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+struct Flow {
+    origin: Pt
+}
+
+impl Flow {
+    fn solve(&self, ground: &Ground) -> FlowOutcome {
+        let current = self.origin;
+        // Ground immediately below shouldn't already be clay or settled water.
+        assert!(!ground.soil_at(&current.down()).blocks_flow());
+
+        match ground.flow_down(&self.origin) {
+            WaterFlow::Opened(pts) => FlowOutcome::CannotSettle(HashSet::from_iter(pts)),
+            _ => unimplemented!()
+        }
     }
 }
 
@@ -201,10 +297,10 @@ y=13, x=498..504"#;
         assert_eq!(Soil::Clay, ground.soil_at(&Pt::new(495, 7)));
         assert_eq!(Soil::Clay, ground.soil_at(&Pt::new(501, 3)));
         assert_eq!(Soil::Clay, ground.soil_at(&Pt::new(501, 7)));
-        assert_eq!(Soil::Sand, ground.soil_at(&Pt::new(1, 1)));
+        assert_eq!(Soil::Sand(None), ground.soil_at(&Pt::new(1, 1)));
     }
 
-    const EXPECTED: &str = r#"..............
+    const EXPECTED: &str = r#"......+.......
 ............#.
 .#..#.......#.
 .#..#..#......
@@ -226,4 +322,28 @@ y=13, x=498..504"#;
         let ground = Ground::new(&parse(EXAMPLE));
         assert_eq!(EXPECTED, format!("{}", ground));
     }
+
+    // .+.    .+.
+    // #.# => #|#
+    // #.#    #|#
+    #[test]
+    fn test_flow1() {
+        let ground = Ground::new(&parse("x=0, y=1..2\nx=2, y=1..2"));
+        let flow = Flow { origin: Pt::new(1, 0) };
+        let outcome = flow.solve(&ground);
+        let pts = [Pt::new(1,0), Pt::new(1,1), Pt::new(1,2)];
+        assert_eq!(FlowOutcome::CannotSettle(HashSet::from_iter(pts.iter().cloned())), outcome);
+    }
+/*
+    // .+.    .+.
+    // ... => |||
+    // .#.    .#.
+    #[test]
+    fn test_flow2() {
+        let ground = Ground::new(&parse("x=2, y=2..2"));
+        let flow = Flow { origin: Pt::new(2, 0) };
+        let outcome = flow.solve(&ground);
+        assert_eq!(FlowOutcome::CannotSettle(HashSet::new()), outcome);
+    }
+    */
 }
