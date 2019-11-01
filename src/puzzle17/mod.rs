@@ -1,4 +1,4 @@
-use std::ops::RangeInclusive;
+use std::ops::{RangeInclusive, Range};
 use regex::Regex;
 use std::str::FromStr;
 use std::collections::{HashMap, HashSet};
@@ -50,9 +50,8 @@ impl Pt {
     }
     fn right(&self) -> Pt { self.right_by(1) }
 
-    fn top(&self, by: i16) -> Pt {
-        Pt { x: self.x, y: self.y - by }
-    }
+    fn up_by(&self, by: i16) -> Pt { Pt { x: self.x, y: self.y - by } }
+    fn up(&self) -> Pt { self.up_by(1) }
 
     fn down_by(&self, by: i16) -> Pt {
         Pt { x: self.x, y: self.y + by }
@@ -95,7 +94,7 @@ impl Display for Soil {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 enum WaterFlow {
     Closed(RangeInclusive<Pt>),
     Opened(RangeInclusive<Pt>) // last Pt allows flowing downwards
@@ -232,8 +231,8 @@ impl Display for Ground {
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum FlowOutcome {
     CannotSettle(RangeInclusive<Pt>),
-    // once settled, a flow has made some tiles wet and can create 1 or 2 new flows (left and right)
-    Settled(HashMap<Pt, Water>, Vec<Flow>)
+    // Settled flow has several ranges of settled water, at most one range of flowing water and 1 or 2 new flows
+    Settled(Vec<RangeInclusive<Pt>>, RangeInclusive<Pt>, Vec<Pt>)
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -242,6 +241,7 @@ struct Flow {
 }
 
 impl Flow {
+    fn new(pt: Pt) -> Self { Flow { origin: pt } }
     fn solve(&self, ground: &Ground) -> FlowOutcome {
         let current = self.origin;
         // Ground immediately below shouldn't already be clay or settled water.
@@ -249,7 +249,37 @@ impl Flow {
 
         match ground.flow_down(&self.origin) {
             WaterFlow::Opened(pts) => FlowOutcome::CannotSettle(pts),
-            _ => unimplemented!()
+            WaterFlow::Closed(range) => {
+                let mut s = Vec::new();
+                let mut end = *range.end();
+                loop {
+                    let left = ground.flow_left(&end);
+                    let right = ground.flow_right(&end);
+                    match (left.clone(), right.clone()) {
+                        (WaterFlow::Opened(_), _) | (_, WaterFlow::Opened(_)) => {
+                            let (left_range, left_pt) = match left {
+                                WaterFlow::Closed(r) => (r.clone(), None),
+                                WaterFlow::Opened(r) => (r.clone(), Some(r.end().clone()))
+                            };
+                            let (right_range, right_pt) = match right {
+                                WaterFlow::Closed(r) => (r.clone(), None),
+                                WaterFlow::Opened(r) => (r.clone(), Some(r.end().clone()))
+                            };
+
+                            let new_flows = left_pt.into_iter().chain(right_pt.into_iter()).collect::<Vec<_>>();
+
+                            break FlowOutcome::Settled(s.clone(), RangeInclusive::new(left_range.end().clone(), right_range.end().clone()), new_flows)
+                        }
+
+                        (WaterFlow::Closed(left_range), WaterFlow::Closed(right_range)) => {
+                            let settled = RangeInclusive::new(left_range.end().clone(), right_range.end().clone());
+                            s.push(settled);
+                            // TODO: we need to recurse or modify ground to add this new settled water to it.
+                            end = end.up();
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -384,16 +414,39 @@ y=13, x=498..504"#;
         let outcome = flow.solve(&ground);
         assert_eq!(FlowOutcome::CannotSettle(RangeInclusive::new(Pt::new(1,0), Pt::new(1,2))), outcome);
     }
-/*
-    // .+.    .+.
-    // ... => |||
-    // .#.    .#.
+
+    // ..+..    ..+..
+    // #...# => #|||#
+    // ..#..    ..#..
     #[test]
     fn test_flow2() {
-        let ground = Ground::new(&parse("x=2, y=2..2"));
-        let flow = Flow { origin: Pt::new(2, 0) };
+        let ground = Ground::new(&parse("x=1, y=1..1\nx=3, y=2..2\nx=5, y=1..1"));
+        let flow = Flow { origin: Pt::new(3, 0) };
+        println!("{:?}", ground.flow_left(&Pt::new(3, 1)));
         let outcome = flow.solve(&ground);
-        assert_eq!(FlowOutcome::CannotSettle(HashSet::new()), outcome);
+        let expected = FlowOutcome::Settled(
+            Vec::new(),
+            RangeInclusive::new(Pt::new(2,1), Pt::new(4,1)),
+            vec![Pt::new(2, 1), Pt::new(4, 1)]
+        );
+        assert_eq!(expected, outcome);
     }
-    */
+
+    // ..+..    ..+..
+    // .....    |||||
+    // .#.#. => .#~#.
+    // ..#..    ..#..
+    #[test]
+    fn test_flow3() {
+        let ground = Ground::new(&parse("x=0, y=0..0\nx=2, y=2..2\nx=4, y=2..2\nx=3, y=3..3"));
+        let flow = Flow { origin: Pt::new(3, 0) };
+        println!("{:?}", ground.flow_left(&Pt::new(3, 1)));
+        let outcome = flow.solve(&ground);
+        let expected = FlowOutcome::Settled(
+            Vec::new(),
+            RangeInclusive::new(Pt::new(2,1), Pt::new(4,1)),
+            vec![Pt::new(2, 1), Pt::new(4, 1)]
+        );
+        assert_eq!(expected, outcome);
+    }
 }
