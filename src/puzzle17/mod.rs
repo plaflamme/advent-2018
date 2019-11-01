@@ -95,9 +95,10 @@ impl Display for Soil {
     }
 }
 
+#[derive(PartialEq, Eq, Debug)]
 enum WaterFlow {
-    Closed(Vec<Pt>),
-    Opened(Vec<Pt>) // last Pt allows flowing downwards
+    Closed(RangeInclusive<Pt>),
+    Opened(RangeInclusive<Pt>) // last Pt allows flowing downwards
 }
 
 struct Ground {
@@ -167,19 +168,42 @@ impl Ground {
     }
 
     fn flow_down(&self, start: &Pt) -> WaterFlow {
-        let mut flow = Vec::new();
         let mut current = *start;
         loop {
-            flow.push(current);
             let down = current.down();
             if self.out_of_bounds(&down) {
-                break WaterFlow::Opened(flow.clone())
+                break WaterFlow::Opened(RangeInclusive::new(*start, current))
             } else if self.soil_at(&down).blocks_flow() {
-                break WaterFlow::Closed(flow.clone())
+                break WaterFlow::Closed(RangeInclusive::new(*start, current))
             } else {
                 current = down;
             }
         }
+    }
+
+    fn flow_left_right<F>(&self, start: &Pt, f: F) -> WaterFlow
+      where F: Fn(&Pt) -> Pt {
+        let mut current = *start;
+        loop {
+            let down = current.down();
+            if !self.soil_at(&down).blocks_flow() {
+                break WaterFlow::Opened(RangeInclusive::new(*start, current));
+            } else {
+                let next = f(&current);
+                if self.soil_at(&next).blocks_flow() {
+                    break WaterFlow::Closed(RangeInclusive::new(*start, current))
+                }
+            }
+            current = f(&current);
+        }
+    }
+
+    fn flow_left(&self, start: &Pt) -> WaterFlow {
+        self.flow_left_right(start, |current| current.left())
+    }
+
+    fn flow_right(&self, start: &Pt) -> WaterFlow {
+        self.flow_left_right(start, |current| current.right())
     }
 
 }
@@ -207,7 +231,7 @@ impl Display for Ground {
 // a flow outcome tells us which new tiles are wet and new flows to consider
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum FlowOutcome {
-    CannotSettle(HashSet<Pt>),
+    CannotSettle(RangeInclusive<Pt>),
     // once settled, a flow has made some tiles wet and can create 1 or 2 new flows (left and right)
     Settled(HashMap<Pt, Water>, Vec<Flow>)
 }
@@ -224,7 +248,7 @@ impl Flow {
         assert!(!ground.soil_at(&current.down()).blocks_flow());
 
         match ground.flow_down(&self.origin) {
-            WaterFlow::Opened(pts) => FlowOutcome::CannotSettle(HashSet::from_iter(pts)),
+            WaterFlow::Opened(pts) => FlowOutcome::CannotSettle(pts),
             _ => unimplemented!()
         }
     }
@@ -323,6 +347,33 @@ y=13, x=498..504"#;
         assert_eq!(EXPECTED, format!("{}", ground));
     }
 
+    #[test]
+    fn test_flow_down() {
+        let ground = Ground::new(&parse(EXAMPLE));
+        let flow = ground.flow_down(&Pt::new(500,0));
+        assert_eq!(WaterFlow::Closed(RangeInclusive::new(Pt::new(500,0), Pt::new(500,6))), flow);
+        let flow = ground.flow_down(&Pt::new(505,0));
+        assert_eq!(WaterFlow::Opened(RangeInclusive::new(Pt::new(505,0), Pt::new(505,13))), flow);
+    }
+
+    #[test]
+    fn test_flow_left() {
+        let ground = Ground::new(&parse(EXAMPLE));
+        let flow = ground.flow_left(&Pt::new(500,6));
+        assert_eq!(WaterFlow::Closed(RangeInclusive::new(Pt::new(500,6), Pt::new(496,6))), flow);
+        let flow = ground.flow_left(&Pt::new(496,6));
+        assert_eq!(WaterFlow::Closed(RangeInclusive::new(Pt::new(496,6), Pt::new(496,6))), flow);
+    }
+
+    #[test]
+    fn test_flow_right() {
+        let ground = Ground::new(&parse(EXAMPLE));
+        let flow = ground.flow_right(&Pt::new(500,6));
+        assert_eq!(WaterFlow::Closed(RangeInclusive::new(Pt::new(500,6), Pt::new(500,6))), flow);
+        let flow = ground.flow_right(&Pt::new(496,6));
+        assert_eq!(WaterFlow::Closed(RangeInclusive::new(Pt::new(496,6), Pt::new(500,6))), flow);
+    }
+
     // .+.    .+.
     // #.# => #|#
     // #.#    #|#
@@ -331,8 +382,7 @@ y=13, x=498..504"#;
         let ground = Ground::new(&parse("x=0, y=1..2\nx=2, y=1..2"));
         let flow = Flow { origin: Pt::new(1, 0) };
         let outcome = flow.solve(&ground);
-        let pts = [Pt::new(1,0), Pt::new(1,1), Pt::new(1,2)];
-        assert_eq!(FlowOutcome::CannotSettle(HashSet::from_iter(pts.iter().cloned())), outcome);
+        assert_eq!(FlowOutcome::CannotSettle(RangeInclusive::new(Pt::new(1,0), Pt::new(1,2))), outcome);
     }
 /*
     // .+.    .+.
