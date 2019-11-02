@@ -100,6 +100,7 @@ enum WaterFlow {
     Opened(RangeInclusive<Pt>) // last Pt allows flowing downwards
 }
 
+#[derive(Debug, Clone)]
 struct Ground {
     min_pos: Pt,
     max_pos: Pt,
@@ -137,6 +138,39 @@ impl Ground {
         }
 
         Ground { min_pos, max_pos, soil }
+    }
+
+    fn with_flow(&self, water: HashMap<Pt, Water>) -> Self {
+        let mut soil = self.soil.clone();
+        for (pt,w) in water {
+            soil.insert(pt, Soil::Sand(Some(w)));
+        }
+        Ground { min_pos: self.min_pos, max_pos: self.max_pos, soil }
+    }
+
+    fn with_flow_outcome(&self, outcome: &FlowOutcome) -> Self {
+        let mut soil = self.soil.clone();
+        match outcome {
+            FlowOutcome::CannotSettle(pts) => {
+                let x = pts.start().x;
+                for y in pts.start().y..=pts.end().y {
+                    soil.insert(Pt::new(x, y), Soil::Sand(Some(Water::Flowing)));
+                }
+                Ground { min_pos: self.min_pos, max_pos: self.max_pos, soil }
+            },
+            FlowOutcome::Settled(settled, flowing, _) => {
+                for s in settled {
+                    let y = s.start().y;
+                    for x in s.start().x..=s.end().x {
+                        soil.insert(Pt::new(x, y), Soil::Sand(Some(Water::Settled)));
+                    }
+                }
+                for x in flowing.start().x..=flowing.end().x {
+                    soil.insert(Pt::new(x, flowing.start().y), Soil::Sand(Some(Water::Flowing)));
+                }
+                Ground { min_pos: self.min_pos, max_pos: self.max_pos, soil }
+            }
+        }
     }
 
     fn out_of_bounds(&self, pt: &Pt) -> bool {
@@ -250,11 +284,12 @@ impl Flow {
         match ground.flow_down(&self.origin) {
             WaterFlow::Opened(pts) => FlowOutcome::CannotSettle(pts),
             WaterFlow::Closed(range) => {
-                let mut s = Vec::new();
+                let mut settled = Vec::new();
+                let mut g = ground.clone();
                 let mut end = *range.end();
                 loop {
-                    let left = ground.flow_left(&end);
-                    let right = ground.flow_right(&end);
+                    let left = g.flow_left(&end);
+                    let right = g.flow_right(&end);
                     match (left.clone(), right.clone()) {
                         (WaterFlow::Opened(_), _) | (_, WaterFlow::Opened(_)) => {
                             let (left_range, left_pt) = match left {
@@ -268,13 +303,20 @@ impl Flow {
 
                             let new_flows = left_pt.into_iter().chain(right_pt.into_iter()).collect::<Vec<_>>();
 
-                            break FlowOutcome::Settled(s.clone(), RangeInclusive::new(left_range.end().clone(), right_range.end().clone()), new_flows)
+                            break FlowOutcome::Settled(settled.clone(), RangeInclusive::new(left_range.end().clone(), right_range.end().clone()), new_flows)
                         }
 
                         (WaterFlow::Closed(left_range), WaterFlow::Closed(right_range)) => {
-                            let settled = RangeInclusive::new(left_range.end().clone(), right_range.end().clone());
-                            s.push(settled);
-                            // TODO: we need to recurse or modify ground to add this new settled water to it.
+                            let s = RangeInclusive::new(left_range.end().clone(), right_range.end().clone());
+                            settled.push(s.clone());
+
+                            let mut water = HashMap::new();
+                            for x in s.start().x..=s.end().x {
+                                water.insert(Pt::new(x, end.y), Water::Settled);
+                            }
+
+                            g = g.with_flow(water);
+
                             end = end.up();
                         }
                     }
@@ -422,7 +464,6 @@ y=13, x=498..504"#;
     fn test_flow2() {
         let ground = Ground::new(&parse("x=1, y=1..1\nx=3, y=2..2\nx=5, y=1..1"));
         let flow = Flow { origin: Pt::new(3, 0) };
-        println!("{:?}", ground.flow_left(&Pt::new(3, 1)));
         let outcome = flow.solve(&ground);
         let expected = FlowOutcome::Settled(
             Vec::new(),
@@ -440,13 +481,20 @@ y=13, x=498..504"#;
     fn test_flow3() {
         let ground = Ground::new(&parse("x=0, y=0..0\nx=2, y=2..2\nx=4, y=2..2\nx=3, y=3..3"));
         let flow = Flow { origin: Pt::new(3, 0) };
-        println!("{:?}", ground.flow_left(&Pt::new(3, 1)));
         let outcome = flow.solve(&ground);
         let expected = FlowOutcome::Settled(
-            Vec::new(),
-            RangeInclusive::new(Pt::new(2,1), Pt::new(4,1)),
-            vec![Pt::new(2, 1), Pt::new(4, 1)]
+            vec![RangeInclusive::new(Pt::new(3,2), Pt::new(3,2))],
+            RangeInclusive::new(Pt::new(1,1), Pt::new(5,1)),
+            vec![Pt::new(1, 1), Pt::new(5, 1)]
         );
         assert_eq!(expected, outcome);
+    }
+
+    #[test]
+    fn test_flow_example() {
+        let ground = Ground::new(&parse(EXAMPLE));
+        let flow = Flow { origin: Pt::new(500,0) };
+        let outcome = flow.solve(&ground);
+        println!("{}", ground.with_flow_outcome(&outcome));
     }
 }
