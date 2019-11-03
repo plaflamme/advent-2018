@@ -242,6 +242,21 @@ impl Ground {
             .count()
     }
 
+    fn retained(&self) -> usize {
+        self.soil
+            .iter()
+            .filter(|(pt, _)| {
+                !self.out_of_bounds(pt)
+            })
+            .filter(|(_, soil)| {
+                match soil {
+                    Soil::Sand(Some(Water::Settled)) => true,
+                    _ => false
+                }
+            })
+            .count()
+    }
+
 }
 
 impl Display for Ground {
@@ -373,14 +388,15 @@ impl crate::Puzzle for Puzzle17 {
     fn part1(&self) -> String {
         let ground = Ground::new(&self.ranges);
         let flow = Flow::new(&Pt::new(500,ground.min_pos.y-1));
-        //println!("{}", flow.solve_r(&ground));
         let solved = flow.solve_r(&ground);
-
         solved.wet_soil().to_string()
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let ground = Ground::new(&self.ranges);
+        let flow = Flow::new(&Pt::new(500,ground.min_pos.y-1));
+        let solved = flow.solve_r(&ground);
+        solved.retained().to_string()
     }
 }
 
