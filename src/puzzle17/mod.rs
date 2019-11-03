@@ -158,7 +158,10 @@ impl Ground {
                 }
                 Ground { min_pos: self.min_pos, max_pos: self.max_pos, soil }
             },
-            FlowOutcome::Settled(settled, flowing, _) => {
+            FlowOutcome::Settled(down, settled, flowing, _) => {
+                for y in down.start().y..=down.end().y {
+                    soil.insert(Pt::new(down.start().x, y), Soil::Sand(Some(Water::Flowing)));
+                }
                 for s in settled {
                     let y = s.start().y;
                     for x in s.start().x..=s.end().x {
@@ -266,7 +269,7 @@ impl Display for Ground {
 enum FlowOutcome {
     CannotSettle(RangeInclusive<Pt>),
     // Settled flow has several ranges of settled water, at most one range of flowing water and 1 or 2 new flows
-    Settled(Vec<RangeInclusive<Pt>>, RangeInclusive<Pt>, Vec<Pt>)
+    Settled(RangeInclusive<Pt>, Vec<RangeInclusive<Pt>>, RangeInclusive<Pt>, Vec<Pt>)
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -275,7 +278,7 @@ struct Flow {
 }
 
 impl Flow {
-    fn new(pt: Pt) -> Self { Flow { origin: pt } }
+    fn new(pt: &Pt) -> Self { Flow { origin: *pt } }
     fn solve(&self, ground: &Ground) -> FlowOutcome {
         let current = self.origin;
         // Ground immediately below shouldn't already be clay or settled water.
@@ -303,7 +306,7 @@ impl Flow {
 
                             let new_flows = left_pt.into_iter().chain(right_pt.into_iter()).collect::<Vec<_>>();
 
-                            break FlowOutcome::Settled(settled.clone(), RangeInclusive::new(left_range.end().clone(), right_range.end().clone()), new_flows)
+                            break FlowOutcome::Settled(range, settled.clone(), RangeInclusive::new(left_range.end().clone(), right_range.end().clone()), new_flows)
                         }
 
                         (WaterFlow::Closed(left_range), WaterFlow::Closed(right_range)) => {
@@ -321,6 +324,19 @@ impl Flow {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fn solve_r(&self, ground: &Ground) -> Ground {
+        let outcome = self.solve(ground);
+        match outcome.clone() {
+            o@FlowOutcome::CannotSettle(_) => ground.with_flow_outcome(&o),
+            FlowOutcome::Settled(_,_,_,flows) => {
+                let mut g = ground.with_flow_outcome(&outcome);
+                flows.iter().fold(g, |gr, pt| {
+                    Flow::new(pt).solve_r(&gr)
+                })
             }
         }
     }
@@ -466,6 +482,7 @@ y=13, x=498..504"#;
         let flow = Flow { origin: Pt::new(3, 0) };
         let outcome = flow.solve(&ground);
         let expected = FlowOutcome::Settled(
+            RangeInclusive::new(Pt::new(3,0), Pt::new(3,1)),
             Vec::new(),
             RangeInclusive::new(Pt::new(2,1), Pt::new(4,1)),
             vec![Pt::new(2, 1), Pt::new(4, 1)]
@@ -483,6 +500,7 @@ y=13, x=498..504"#;
         let flow = Flow { origin: Pt::new(3, 0) };
         let outcome = flow.solve(&ground);
         let expected = FlowOutcome::Settled(
+            RangeInclusive::new(Pt::new(3,0), Pt::new(3,1)),
             vec![RangeInclusive::new(Pt::new(3,2), Pt::new(3,2))],
             RangeInclusive::new(Pt::new(1,1), Pt::new(5,1)),
             vec![Pt::new(1, 1), Pt::new(5, 1)]
@@ -496,5 +514,7 @@ y=13, x=498..504"#;
         let flow = Flow { origin: Pt::new(500,0) };
         let outcome = flow.solve(&ground);
         println!("{}", ground.with_flow_outcome(&outcome));
+
+        println!("{}", flow.solve_r(&ground));
     }
 }
