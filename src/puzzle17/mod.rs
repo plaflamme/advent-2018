@@ -172,15 +172,13 @@ impl Ground {
                     soil.insert(Pt::new(x, flowing.start().y), Soil::Sand(Some(Water::Flowing)));
                 }
                 Ground { min_pos: self.min_pos, max_pos: self.max_pos, soil }
-            }
+            },
+            FlowOutcome::Visited => self.clone()
         }
     }
 
     fn out_of_bounds(&self, pt: &Pt) -> bool {
-        pt.x < self.min_pos.x ||
-            pt.x > self.max_pos.x ||
-            pt.y < self.min_pos.y ||
-            pt.y > self.max_pos.y
+        pt.y < self.min_pos.y || pt.y > self.max_pos.y
     }
 
     fn soil_at(&self, pos: &Pt) -> Soil {
@@ -188,19 +186,6 @@ impl Ground {
             Some(soil) => *soil,
             None => Soil::Sand(None)
         }
-    }
-
-    // not used, keeping it around for the iterator code.
-    fn flow_down_iter(&self, start: &Pt) -> impl Iterator<Item = Pt> + '_ {
-        let mut current = *start;
-        std::iter::from_fn(move || {
-            let down = current.down();
-            if self.out_of_bounds(&down) || self.soil_at(&down).blocks_flow() { None } else {
-                let tmp = current;
-                current = down;
-                Some(tmp)
-            }
-        })
     }
 
     fn flow_down(&self, start: &Pt) -> WaterFlow {
@@ -242,6 +227,21 @@ impl Ground {
         self.flow_left_right(start, |current| current.right())
     }
 
+    fn wet_soil(&self) -> usize {
+        self.soil
+            .iter()
+            .filter(|(pt, _)| {
+                !self.out_of_bounds(pt)
+            })
+            .filter(|(_, soil)| {
+                match soil {
+                    Soil::Sand(Some(_)) => true,
+                    _ => false
+                }
+            })
+            .count()
+    }
+
 }
 
 impl Display for Ground {
@@ -269,7 +269,8 @@ impl Display for Ground {
 enum FlowOutcome {
     CannotSettle(RangeInclusive<Pt>),
     // Settled flow has several ranges of settled water, at most one range of flowing water and 1 or 2 new flows
-    Settled(RangeInclusive<Pt>, Vec<RangeInclusive<Pt>>, RangeInclusive<Pt>, Vec<Pt>)
+    Settled(RangeInclusive<Pt>, Vec<RangeInclusive<Pt>>, RangeInclusive<Pt>, Vec<Pt>),
+    Visited // some other flow has already computed this one
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -281,12 +282,21 @@ impl Flow {
     fn new(pt: &Pt) -> Self { Flow { origin: *pt } }
     fn solve(&self, ground: &Ground) -> FlowOutcome {
         let current = self.origin;
+        if let Soil::Sand(Some(_)) = ground.soil_at(&self.origin.down()) {
+            return FlowOutcome::Visited;
+        }
         // Ground immediately below shouldn't already be clay or settled water.
-        assert!(!ground.soil_at(&current.down()).blocks_flow());
+        assert!(!ground.soil_at(&current.down()).blocks_flow(), format!("{} {:?}", ground, self.origin));
 
         match ground.flow_down(&self.origin) {
             WaterFlow::Opened(pts) => FlowOutcome::CannotSettle(pts),
             WaterFlow::Closed(range) => {
+
+                // special case if we've hit some flowing water which means we've already visited this
+                if let Soil::Sand(Some(Water::Flowing)) = ground.soil_at(range.end()) {
+                    return FlowOutcome::Settled(range.clone(), Vec::new(), RangeInclusive::new(range.end().clone(), range.end().clone()), Vec::new());
+                }
+
                 let mut settled = Vec::new();
                 let mut g = ground.clone();
                 let mut end = *range.end();
@@ -337,7 +347,8 @@ impl Flow {
                 flows.iter().fold(g, |gr, pt| {
                     Flow::new(pt).solve_r(&gr)
                 })
-            }
+            },
+            FlowOutcome::Visited => ground.clone()
         }
     }
 }
@@ -361,8 +372,11 @@ struct Puzzle17 {
 impl crate::Puzzle for Puzzle17 {
     fn part1(&self) -> String {
         let ground = Ground::new(&self.ranges);
-        println!("{}", ground);
-        unimplemented!()
+        let flow = Flow::new(&Pt::new(500,ground.min_pos.y-1));
+        //println!("{}", flow.solve_r(&ground));
+        let solved = flow.solve_r(&ground);
+
+        solved.wet_soil().to_string()
     }
 
     fn part2(&self) -> String {
@@ -500,7 +514,7 @@ y=13, x=498..504"#;
         let flow = Flow { origin: Pt::new(3, 0) };
         let outcome = flow.solve(&ground);
         let expected = FlowOutcome::Settled(
-            RangeInclusive::new(Pt::new(3,0), Pt::new(3,1)),
+            RangeInclusive::new(Pt::new(3,0), Pt::new(3,2)),
             vec![RangeInclusive::new(Pt::new(3,2), Pt::new(3,2))],
             RangeInclusive::new(Pt::new(1,1), Pt::new(5,1)),
             vec![Pt::new(1, 1), Pt::new(5, 1)]
