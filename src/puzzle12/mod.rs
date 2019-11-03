@@ -234,8 +234,4 @@ mod test {
         let pzl = parse(EXAMPLE.to_owned());
         assert_eq!("325", pzl.part1());
     }
-    #[test]
-    fn part2() {
-        unimplemented!()
-    }
 }

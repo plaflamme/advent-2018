@@ -1,9 +1,8 @@
 use std::str::FromStr;
-use itertools::{Itertools, cloned};
+use itertools::Itertools;
 use regex::Regex;
 use std::ops::{Index, IndexMut};
 use std::collections::{HashSet, HashMap};
-use std::iter::FromIterator;
 
 #[allow(non_camel_case_types)]
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
@@ -210,7 +209,7 @@ impl Valid {
             .iter()
             .cloned()
             .filter(|opcode| {
-                let mut bench = &mut self.before.clone();
+                let bench = &mut self.before.clone();
                 opcode.run(bench, &self.instruction.a, &self.instruction.b, &self.instruction.c);
                 *bench == self.after
             })
@@ -346,8 +345,7 @@ impl crate::Puzzle for Puzzle16 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::Puzzle;
-    use lazy_static::lazy_static;
+    use std::iter::FromIterator;
 
     const PART1_EXAMPLE: &str = r#"Before: [3, 2, 1, 1]
 9 2 1 2

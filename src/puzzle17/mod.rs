@@ -1,9 +1,8 @@
-use std::ops::{RangeInclusive, Range};
+use std::ops::RangeInclusive;
 use regex::Regex;
 use std::str::FromStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Error};
-use std::iter::FromIterator;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct ClayRange { x: RangeInclusive<i16>, y: RangeInclusive<i16> }
@@ -358,7 +357,7 @@ impl Flow {
         match outcome.clone() {
             o@FlowOutcome::CannotSettle(_) => ground.with_flow_outcome(&o),
             FlowOutcome::Settled(_,_,_,flows) => {
-                let mut g = ground.with_flow_outcome(&outcome);
+                let     g = ground.with_flow_outcome(&outcome);
                 flows.iter().fold(g, |gr, pt| {
                     Flow::new(pt).solve_r(&gr)
                 })

@@ -181,12 +181,12 @@ mod test {
         let (max_tile, side) = grid.solve_all();
         assert_eq!(16, side);
         assert_eq!(Pt{x:90,y:269}, max_tile);
-        assert_eq!(29, grid.tile_power(&max_tile, side));
+        assert_eq!(113, grid.tile_power(&max_tile, side));
 
         let grid = Grid::new(42);
         let (max_tile, side) = grid.solve_all();
-        assert_eq!(Pt{x:21,y:61}, max_tile);
-        assert_eq!(30, grid.tile_power(&max_tile, side));
+        assert_eq!(Pt{x:232,y:251}, max_tile);
+        assert_eq!(119, grid.tile_power(&max_tile, side));
     }
 
 }
