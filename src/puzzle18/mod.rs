@@ -45,7 +45,7 @@ impl Display for Acre {
     }
 }
 
-#[derive(Clone)]
+#[derive(PartialEq, Eq, Clone)]
 struct Outskirts {
     size: usize,
     acres: HashMap<Pt, Acre>
@@ -88,10 +88,8 @@ impl Outskirts {
         Outskirts { size: self.size, acres: a }
     }
 
-    fn part1(&self) -> usize {
-        let yards = self.acres.iter().filter(|(_, acre)| **acre == Acre::Yard).count();
-        let trees = self.acres.iter().filter(|(_, acre)| **acre == Acre::Trees).count();
-        yards * trees
+    fn count(&self, a: &Acre) -> usize {
+        self.acres.iter().filter(|(_, acre)| *acre == a).count()
     }
 }
 
@@ -104,7 +102,7 @@ impl Display for Outskirts {
                     Some(acre) => write!(f, "{}", acre)?
                 }
             }
-            writeln!(f, "");
+            writeln!(f, "")?;
         }
         Ok(())
     }
@@ -144,11 +142,39 @@ impl crate::Puzzle for Puzzle18 {
         for _ in 0..10 {
             outskirts = outskirts.step();
         }
-        outskirts.part1().to_string()
+        (outskirts.count(&Acre::Yard) * outskirts.count(&Acre::Trees)).to_string()
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let mut outskirts = self.outskirts.clone();
+        let mut step = 0;
+        let mut steps: Vec<(Outskirts, i32)> = Vec::new();
+        let cycle_length = loop {
+            outskirts = outskirts.step();
+            step = step + 1;
+            let found = steps.iter().find(|(other, _)| {
+                *other == outskirts
+            });
+
+            match found {
+                None => steps.push((outskirts.clone(), step)),
+                Some((_, previous_step)) => {
+                    let length = step - *previous_step;
+                    println!("Found cycle after {} steps, it is {} steps long", step, length);
+                    break length;
+                }
+            }
+        };
+
+        while step + cycle_length < 1000000000 {
+            step += cycle_length;
+        }
+
+        for _ in 0..(1000000000-step) {
+            outskirts = outskirts.step();
+        }
+
+        (outskirts.count(&Acre::Yard) * outskirts.count(&Acre::Trees)).to_string()
     }
 }
 
