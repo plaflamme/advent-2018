@@ -30,7 +30,7 @@ enum OpCode {
 }
 
 impl OpCode {
-    fn run(&self, bench: &mut Bench, a: &u16, b: &u16, c: &u16) {
+    fn run(&self, bench: &mut Bench, a: &u32, b: &u32, c: &u32) {
         use OpCode::*;
         match self {
             // addr (add register) stores into register C the result of adding register A and register B.
@@ -76,20 +76,20 @@ impl OpCode {
 }
 
 #[derive(PartialEq, Eq, Default, Clone, Debug)]
-struct Bench([u16; 6]);
+struct Bench([u32; 6]);
 
-impl Index<&u16> for Bench {
-    type Output = u16;
+impl Index<&u32> for Bench {
+    type Output = u32;
 
-    fn index(&self, index: &u16) -> &Self::Output {
-        assert!(*index < self.0.len() as u16, format!("Register should be [0,{}[, but was {}", self.0.len(), index));
+    fn index(&self, index: &u32) -> &Self::Output {
+        assert!(*index < self.0.len() as u32, format!("Register should be [0,{}[, but was {}", self.0.len(), index));
         &self.0[*index as usize]
     }
 }
 
-impl IndexMut<&u16> for Bench {
-    fn index_mut(&mut self, index: &u16) -> &mut Self::Output {
-        assert!(*index < self.0.len() as u16, format!("Register should be [0,{}[, but was {}", self.0.len(), index));
+impl IndexMut<&u32> for Bench {
+    fn index_mut(&mut self, index: &u32) -> &mut Self::Output {
+        assert!(*index < self.0.len() as u32, format!("Register should be [0,{}[, but was {}", self.0.len(), index));
         &mut self.0[*index as usize]
     }
 }
@@ -97,9 +97,9 @@ impl IndexMut<&u16> for Bench {
 #[derive(PartialEq, Eq, Debug)]
 struct Instr {
     code: OpCode,
-    a: u16,
-    b: u16,
-    c: u16
+    a: u32,
+    b: u32,
+    c: u32
 }
 
 impl FromStr for Instr {
@@ -110,22 +110,23 @@ impl FromStr for Instr {
         Ok(
             Instr {
                 code: OpCode::from_str(parts[0]).unwrap(), // using ? requires converting the error, not sure what's the best approach
-                a: u16::from_str(parts[1])?,
-                b: u16::from_str(parts[2])?,
-                c: u16::from_str(parts[3])?,
+                a: u32::from_str(parts[1])?,
+                b: u32::from_str(parts[2])?,
+                c: u32::from_str(parts[3])?,
             }
         )
     }
 }
 
+#[derive(Clone)]
 struct Cpu {
-    ip_register: u16,
-    ip: u16,
+    ip_register: u32,
+    ip: u32,
     bench: Bench
 }
 
 impl Cpu {
-    fn new(ip_register: u16) -> Self {
+    fn new(ip_register: u32) -> Self {
         Cpu { ip_register, ip: 0, bench: Bench::default() }
     }
 
@@ -136,10 +137,12 @@ impl Cpu {
                 Some(i) => {
                     // before the instruction, set the instr pointer register to the value of the instr pointer.
                     self.bench[&self.ip_register] = self.ip;
+                    print!("{:?} {:?}", self.bench.0, i);
                     i.code.run(&mut self.bench, &i.a, &i.b, &i.c);
                     // after the instruction, set the instr pointer to the value of the instr register and increment by one
                     // TODO: the instructions say this should only be done if the instruction modified the register, but I guess there's no harm to do it always?
                     self.ip = self.bench[&self.ip_register] + 1;
+                    println!(" -> {:?} ({})", self.bench.0, self.ip);
                 }
             }
         }
@@ -153,7 +156,7 @@ fn parse(input: &str) -> (Cpu, Vec<Instr>) {
         Some(line) => {
             let re = Regex::new(r"^#ip (\d)$").unwrap();
             let caps = re.captures(line).expect("invalid instr register");
-            u16::from_str(&caps[1]).expect("invalid input")
+            u32::from_str(&caps[1]).expect("invalid input")
         }
     };
 
@@ -178,7 +181,9 @@ struct Puzzle19 {
 
 impl crate::Puzzle for Puzzle19 {
     fn part1(&self) -> String {
-        unimplemented!()
+        let mut cpu = self.cpu.clone();
+        cpu.run(&self.program);
+        cpu.bench.0[0].to_string()
     }
 
     fn part2(&self) -> String {
