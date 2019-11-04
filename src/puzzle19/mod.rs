@@ -82,14 +82,14 @@ impl Index<&u16> for Bench {
     type Output = u16;
 
     fn index(&self, index: &u16) -> &Self::Output {
-        assert!(*index < 4, format!("Register should be [0,4[, but was {}", index));
+        assert!(*index < self.0.len() as u16, format!("Register should be [0,{}[, but was {}", self.0.len(), index));
         &self.0[*index as usize]
     }
 }
 
 impl IndexMut<&u16> for Bench {
     fn index_mut(&mut self, index: &u16) -> &mut Self::Output {
-        assert!(*index < 4, format!("Register should be [0,4[, but was {}", index));
+        assert!(*index < self.0.len() as u16, format!("Register should be [0,{}[, but was {}", self.0.len(), index));
         &mut self.0[*index as usize]
     }
 }
@@ -119,22 +119,30 @@ impl FromStr for Instr {
 }
 
 struct Cpu {
-    ip_register: u8,
-    ip: u8,
+    ip_register: u16,
+    ip: u16,
     bench: Bench
 }
 
 impl Cpu {
-    fn new(ip_register: u8) -> Self {
+    fn new(ip_register: u16) -> Self {
         Cpu { ip_register, ip: 0, bench: Bench::default() }
     }
 
     fn run(&mut self, program: &Vec<Instr>) {
-        program
-            .iter()
-            .for_each(|i| {
-                i.code.run(&mut self.bench, &i.a, &i.b, &i.c);
-            });
+        loop {
+            match program.get(self.ip as usize) {
+                None => break,
+                Some(i) => {
+                    // before the instruction, set the instr pointer register to the value of the instr pointer.
+                    self.bench[&self.ip_register] = self.ip;
+                    i.code.run(&mut self.bench, &i.a, &i.b, &i.c);
+                    // after the instruction, set the instr pointer to the value of the instr register and increment by one
+                    // TODO: the instructions say this should only be done if the instruction modified the register, but I guess there's no harm to do it always?
+                    self.ip = self.bench[&self.ip_register] + 1;
+                }
+            }
+        }
     }
 }
 
@@ -145,7 +153,7 @@ fn parse(input: &str) -> (Cpu, Vec<Instr>) {
         Some(line) => {
             let re = Regex::new(r"^#ip (\d)$").unwrap();
             let caps = re.captures(line).expect("invalid instr register");
-            u8::from_str(&caps[1]).expect("invalid input")
+            u16::from_str(&caps[1]).expect("invalid input")
         }
     };
 
@@ -199,5 +207,12 @@ seti 9 0 5"#;
         assert_eq!(Some(Instr { code: OpCode::seti, a: 9, b: 0, c: 5 }), program.pop());
         assert_eq!(Some(Instr { code: OpCode::seti, a: 8, b: 0, c: 4 }), program.pop());
         assert_eq!(Some(Instr { code: OpCode::setr, a: 1, b: 0, c: 0 }), program.pop());
+    }
+
+    #[test]
+    fn test_example() {
+        let (mut cpu, program) = parse(EXAMPLE);
+        cpu.run(&program);
+        assert_eq!([6, 5, 6, 0, 0, 9], cpu.bench.0);
     }
 }
