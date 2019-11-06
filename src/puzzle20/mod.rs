@@ -9,6 +9,104 @@ enum Dir {
     West
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum Path {
+    Segment(VecDeque<Dir>), // NESW
+    Branch(VecDeque<Path>), // (N|E|S)
+    Sequence(VecDeque<Path>), // NESW(SWE|)WSN
+}
+
+impl Path {
+
+    fn from(s: &str) -> Path {
+        let (path, _) = Path::parse_sequence(s);
+        path
+    }
+
+    fn parse_segment(s: &str) -> (Path, &str) {
+        let segment = s.chars()
+            .take_while(|c| {
+                match *c {
+                    'N' | 'E' | 'S' | 'W' => true,
+                    _ => false
+                }
+            })
+            .map(|c| {
+                match c {
+                    'N' => Dir::North,
+                    'E' => Dir::East,
+                    'S' => Dir::South,
+                    'W' => Dir::West,
+                    _ => panic!("unexpected char")
+                }
+            })
+            .collect::<VecDeque<_>>();
+
+        let (_, remains) = s.split_at(segment.len());
+
+        (Path::Segment(segment), remains)
+    }
+
+    // a branch ends when we hit a closing bracket and will consume it
+    fn parse_branch(s: &str) -> (Path, &str) {
+        let mut remains = s;
+        let mut branches = VecDeque::new();
+        loop {
+            match remains.chars().next() {
+                Some(')') => break,
+                Some('|') | Some('(') => {
+                    let (_, b) = remains.split_at(1);
+                    let (path, s) = Path::parse_sequence(b);
+                    remains = s;
+                    branches.push_back(path);
+                },
+                c => panic!(format!("unexpected char {:?}", c))
+            };
+        };
+
+        (Path::Branch(branches), remains)
+    }
+
+    // a sequence ends when we hit a closing bracket or a |, but does not consume it
+    fn parse_sequence(s: &str) -> (Path, &str) {
+        let mut remains = s;
+        let mut sequence = VecDeque::new();
+        loop {
+            match remains.chars().next() {
+                None => break,
+                Some(c) => {
+                    match c {
+                        '$' | ')' | '|' => break,
+                        '(' => {
+                            let (branch, s) = Path::parse_branch(remains);
+                            remains = s;
+                            sequence.push_back(branch);
+                        },
+                        'N' | 'E' | 'S' | 'W' => {
+                            let (segment, s) = Path::parse_segment(remains);
+                            remains = s;
+                            sequence.push_back(segment);
+                        },
+                        '^' => {
+                            let (_, s) = remains.split_at(1);
+                            let (segment, s) = Path::parse_segment(s);
+                            remains = s;
+                            sequence.push_back(segment);
+                        },
+                        c => panic!(format!("unexpected char {:?}", c))
+                    }
+                }
+            };
+        };
+
+        // simplify the path if possible
+        match sequence.len() {
+            1 => (sequence.front().unwrap().clone(), remains),
+            _ => (Path::Sequence(sequence), remains)
+        }
+    }
+}
+
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 struct Pt {
     y: i32, // sort by y first
@@ -70,8 +168,9 @@ impl Map {
         Map { locations, current_pos }
     }
 
-    fn follow(&mut self, directions: &mut VecDeque<Dir>) {
-        match directions.pop_front() {
+    fn follow(&mut self, directions: &VecDeque<Dir>) {
+        let mut remains = directions.clone();
+        match remains.pop_front() {
             None => { // set all remaining unknown locations to Wall
                 self.locations.iter_mut().for_each(|(pt, loc)| {
                     if *loc == Loc::Unk {
@@ -89,7 +188,21 @@ impl Map {
                         self.locations.insert(*pt, Loc::Unk);
                     }
                 });
-                self.follow(directions);
+                self.follow(&remains);
+            }
+        }
+    }
+
+    fn follow_path(&mut self, path: &Path) {
+        match path {
+            Path::Segment(directions) => self.follow(&directions),
+            Path::Sequence(paths) => paths.iter().for_each(|path| self.follow_path(path)),
+            Path::Branch(paths) => {
+                let original_pos = self.current_pos;
+                for path in paths {
+                    self.follow_path(path);
+                    self.current_pos = original_pos;
+                }
             }
         }
     }
@@ -220,12 +333,38 @@ mod test {
     }
 
     #[test]
+    fn test_path_parse() {
+        assert_eq!(
+            Path::Segment(VecDeque::from(vec![Dir::West, Dir::North, Dir::East])),
+            Path::from("^WNE$")
+        );
+        assert_eq!(
+            Path::Sequence(
+                VecDeque::from(vec![
+                    Path::Segment(VecDeque::from(vec![Dir::East, Dir::North, Dir::West, Dir::West, Dir::West])),
+                    Path::Branch(VecDeque::from(vec![
+                        Path::Segment(VecDeque::from(vec![Dir::North, Dir::East, Dir::East, Dir::East])),
+                        Path::Sequence(VecDeque::from(vec![
+                            Path::Segment(VecDeque::from(vec![Dir::South, Dir::South, Dir::East])),
+                            Path::Branch(VecDeque::from(vec![
+                                Path::Segment(VecDeque::from(vec![Dir::East, Dir::East])),
+                                Path::Segment(VecDeque::from(vec![Dir::North]))
+                            ]))
+                        ])),
+
+                    ]))
+                ])
+            ),
+            Path::from("^ENWWW(NEEE|SSE(EE|N))$")
+        );
+    }
+
+    #[test]
     fn test_examples() {
 
         fn solve(i: &str) -> u32 {
-            let mut dirs = parse(i);
             let mut map = Map::new();
-            map.follow(&mut dirs);
+            map.follow_path(&Path::from(i));
             let sol = map.part1_solution();
             sol.path.len() as u32 - 1 // path contains rooms, so steps is rooms - 1;
         }
@@ -233,12 +372,12 @@ mod test {
         let input = "^WNE$";
         assert_eq!(3, solve(input));
         let input = "^ENWWW(NEEE|SSE(EE|N))$";
-//        assert_eq!(10, parse(input));
+        assert_eq!(10, solve(input));
         let input = "^ENNWSWW(NEWS|)SSSEEN(WNSE|)EE(SWEN|)NNN$";
-//        assert_eq!(18, parse(input));
+        assert_eq!(18, solve(input));
         let input = "^ESSWWN(E|NNENN(EESS(WNSE|)SSS|WWWSSSSE(SW|NNNE)))$";
-//        assert_eq!(23, parse(input));
+        assert_eq!(23, solve(input));
         let input = "^WSSEESWWWNW(S|NENNEEEENN(ESSSSW(NWSW|SSEN)|WSWWN(E|WWS(E|SS))))$";
-//        assert_eq!(31, parse(input));
+        assert_eq!(31, solve(input));
     }
 }
