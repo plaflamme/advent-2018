@@ -127,8 +127,6 @@ impl Pt {
     fn new(x: i32, y: i32) -> Self {
         Pt{x,y}
     }
-    fn max() -> Self { Pt::new(std::i32::MAX, std::i32::MAX) }
-    fn min() -> Self { Pt::new(std::i32::MIN, std::i32::MIN) }
 
     // NW is the minimum point and SE is the maximum
     fn north(&self) -> Self { Pt::new(self.x, self.y - 1) }
@@ -182,7 +180,7 @@ impl Map {
         let mut remains = directions.clone();
         match remains.pop_front() {
             None => { // set all remaining unknown locations to Wall
-                self.locations.iter_mut().for_each(|(pt, loc)| {
+                self.locations.iter_mut().for_each(|(_, loc)| {
                     if *loc == Loc::Unk {
                         *loc = Loc::Wall;
                     }
@@ -262,7 +260,7 @@ impl Map {
 
 impl Display for Map {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let mut keys = self.locations.keys().collect::<Vec<_>>();
+        let keys = self.locations.keys().collect::<Vec<_>>();
         let mut xs = keys.iter().map(|x| x.x).collect::<Vec<_>>();
         xs.sort();
         let mut ys = keys.iter().map(|x| x.y).collect::<Vec<_>>();
@@ -290,33 +288,20 @@ impl Display for Map {
     }
 }
 
-fn parse(input: &str) -> VecDeque<Dir> {
-    input.chars()
-        .flat_map(|c| {
-            match c {
-                '^' | '$' => None,
-                'N' => Some(Dir::North),
-                'E' => Some(Dir::East),
-                'S' => Some(Dir::South),
-                'W' => Some(Dir::West),
-                '(' | ')' => unimplemented!(),
-                _ => panic!(format!("unexpected character {}", c))
-            }
-        })
-        .collect::<VecDeque<_>>()
-}
-
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
-    Box::new(Puzzle20 { regex: input })
+    Box::new(Puzzle20 { path: Path::from(&input) })
 }
 
 struct Puzzle20 {
-    regex: String
+    path: Path
 }
 
 impl crate::Puzzle for Puzzle20 {
     fn part1(&self) -> String {
-        unimplemented!()
+        let mut map = Map::new();
+        map.follow_path(&self.path);
+        let sol = map.part1_solution();
+        (sol.path.len() - 1).to_string()
     }
 
     fn part2(&self) -> String {
