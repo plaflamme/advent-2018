@@ -235,6 +235,10 @@ impl Map {
         paths.sort();
         **paths.last().unwrap()
     }
+
+    fn part2_solution(&self) -> u32 {
+        self.shortest_path.values().cloned().filter(|doors| *doors >= 1000).count() as u32
+    }
 }
 
 impl Display for Map {
@@ -286,7 +290,9 @@ impl crate::Puzzle for Puzzle20 {
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let mut map = Map::new();
+        map.follow(&self.path);
+        map.part2_solution().to_string()
     }
 }
 
