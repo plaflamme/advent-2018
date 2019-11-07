@@ -156,14 +156,9 @@ enum Loc {
     Unk
 }
 
-#[derive(Debug)]
-struct Solution {
-    room_pt: Pt,
-    path: Vec<Pt>
-}
-
 struct Map {
     locations: HashMap<Pt, Loc>,
+    shortest_path: HashMap<Pt, u32>,
     current_pos: Pt
 }
 
@@ -173,88 +168,72 @@ impl Map {
         let current_pos = Pt::new(0,0);
         locations.insert(current_pos, Loc::Room);
         current_pos.neighbours().iter().for_each(|x| { locations.insert(x.clone(), Loc::Unk); });
-        Map { locations, current_pos }
+        Map { locations, shortest_path: HashMap::new(), current_pos }
     }
 
-    fn follow(&mut self, directions: &VecDeque<Dir>) {
+    fn follow_segment(&mut self, directions: &VecDeque<Dir>, length: u32) -> u32 {
         let mut remains = directions.clone();
         match remains.pop_front() {
-            None => { // set all remaining unknown locations to Wall
-                self.locations.iter_mut().for_each(|(_, loc)| {
-                    if *loc == Loc::Unk {
-                        *loc = Loc::Wall;
-                    }
-                });
-            },
+            None => length,
             Some(dir) => {
+                let new_length = length + 1;
                 let door_pt = self.current_pos.at(dir);
                 self.locations.insert(door_pt, Loc::Door);
                 self.current_pos = door_pt.at(dir);
+                // TODO: record shortest path
+                match self.shortest_path.get(&self.current_pos) {
+                    None => self.shortest_path.insert(self.current_pos, new_length),
+                    Some(s) if s > &length => self.shortest_path.insert(self.current_pos, new_length),
+                    _ => None
+                };
                 self.locations.insert(self.current_pos, Loc::Room);
                 self.current_pos.neighbours().iter().for_each(|pt| {
                     if !self.locations.contains_key(pt) {
                         self.locations.insert(*pt, Loc::Unk);
                     }
                 });
-                self.follow(&remains);
+                self.follow_segment(&remains, new_length)
             }
         }
     }
 
-    fn follow_path(&mut self, path: &Path) {
+    fn follow_path(&mut self, path: &Path, length: u32) -> u32 {
         match path {
-            Path::Noop => (),
-            Path::Segment(directions) => self.follow(&directions),
-            Path::Sequence(paths) => paths.iter().for_each(|path| self.follow_path(path)),
+            Path::Noop => length,
+            Path::Segment(directions) => {
+                self.follow_segment(&directions, length)
+            },
+            Path::Sequence(paths) => {
+                paths.iter().fold(length, |accumulated_length, path| {
+                    self.follow_path(path, accumulated_length)
+                })
+            },
             Path::Branch(paths) => {
                 let original_pos = self.current_pos;
+                let mut shortest_path = std::u32::MAX;
                 for path in paths {
-                    self.follow_path(path);
+                    shortest_path = shortest_path.min(self.follow_path(path, length));
                     self.current_pos = original_pos;
                 }
+                shortest_path
             }
         }
     }
 
-    fn room_doors(&self, pt: &Pt) -> Vec<Dir> {
-        let door_at = |dir: Dir| {
-            self.locations.get(&pt.at(dir))
-                .filter(|l| **l == Loc::Door)
-                .map(|_| dir)
-        };
-
-        vec![door_at(Dir::North), door_at(Dir::East), door_at(Dir::South), door_at(Dir::West)]
-            .iter()
-            .flatten()
-            .cloned()
-            .collect()
+    fn follow(&mut self, path: &Path) {
+        self.follow_path(path, 0);
+        // set all remaining unknown locations to Wall
+        self.locations.iter_mut().for_each(|(_, loc)| {
+            if *loc == Loc::Unk {
+                *loc = Loc::Wall;
+            }
+        });
     }
 
-    fn part1_solution(&self) -> Solution {
-        let mut paths = self.locations
-            .iter()
-            .filter(|(pt, loc)| **loc == Loc::Room && **pt != Pt::new(0,0))
-            .map(|(other_room, _)| {
-                let (path, _) = pathfinding::directed::dijkstra::dijkstra(
-                    &Pt::new(0,0),
-                    |room_pt| {
-                        self.room_doors(room_pt)
-                            .iter()
-                            .map(|dir| (room_pt.at(*dir).at(*dir), 1))
-                            .collect::<Vec<_>>()
-                    },
-                    |pt| { pt == other_room }
-                ).expect(&format!("unable to find a path to {:?} in map {}", other_room, self));
-
-                (other_room, path)
-            })
-            .collect::<Vec<_>>();
-
-        paths.sort_by_key(|(_, path)| path.len());
-
-        let (other, longest_shortest_path) = paths.last().unwrap();
-
-        Solution { room_pt: **other, path: longest_shortest_path.clone() }
+    fn part1_solution(&self) -> u32 {
+        let mut paths = self.shortest_path.values().collect::<Vec<_>>();
+        paths.sort();
+        **paths.last().unwrap()
     }
 }
 
@@ -297,11 +276,13 @@ struct Puzzle20 {
 }
 
 impl crate::Puzzle for Puzzle20 {
+    // The solution is 4180
     fn part1(&self) -> String {
+        println!("{:?}", self.path);
         let mut map = Map::new();
-        map.follow_path(&self.path);
-        let sol = map.part1_solution();
-        (sol.path.len() - 1).to_string()
+        map.follow(&self.path);
+        println!("{}", map);
+        map.part1_solution().to_string()
     }
 
     fn part2(&self) -> String {
@@ -388,11 +369,11 @@ mod test {
     fn test_examples() {
         for (path_str, (expected_solution, expected_map)) in EXAMPLES.iter() {
             let mut map = Map::new();
-            map.follow_path(&Path::from(path_str));
+            map.follow(&Path::from(path_str));
             let sol = map.part1_solution();
 
             assert_eq!(expected_map.replace("-", "|"), format!("{}", map));
-            assert_eq!(*expected_solution, sol.path.len() as u32 - 1);
+            assert_eq!(*expected_solution, sol);
         }
     }
 
