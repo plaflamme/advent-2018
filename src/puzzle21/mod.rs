@@ -160,7 +160,105 @@ struct Puzzle21 {
     cpu: Cpu,
     program: Vec<Instr>
 }
+/*
+#ip 5
 
+L0:
+  ip=0 R3 = 123
+  ip=1 R3 = R3 & 456
+  ip=2 if R3 == 72 {
+         GOTO L1 // ip=5
+       } else {
+         R5=0 // GOTO ip=1
+       }
+
+ip=0  seti 123 0 3
+ip=1  bani 3 456 3
+ip=2  eqri 3 72 3
+ip=3  addr 3 5 5
+ip=4  seti 0 0 5
+
+L1:
+  ip=5  R3 = 0
+  ip=6  R2 = R3 | 65536
+  ip=7  R3 = 14070682
+  ip=8  R1 = R2 & 255
+  ip=9  R3 = R3 + R1
+  ip=10 R3 = R3 & 16777215 // R3 & FFFFFF
+  ip=11 R3 = R3 * 65899
+  ip=12 R3 = R3 & 16777215 // R3 & FFFFFF
+
+  ip=13 if(256 > R2) {
+  ip=14   GOTO L2 // ip=16
+        } else {
+  ip=15   GOTO L3 // R5 += 1 ip=17
+        }
+
+ip=5  seti 0 0 3
+ip=6  bori 3 65536 2
+ip=7  seti 14070682 0 3
+ip=8  bani 2 255 1
+ip=9  addr 3 1 3
+ip=10 bani 3 16777215 3
+ip=11 muli 3 65899 3
+ip=12 bani 3 16777215 3
+ip=13 gtir 256 2 1
+ip=14 addr 1 5 5
+ip=15 addi 5 1 5
+
+L2:
+  ip=16 GOTO L4 // R5 = 27
+
+ip=16 seti 27 8 5
+
+L3:
+  ip=17 R1 = 0
+  ip=18 R4 = R1 + 1
+  ip=19 R4 = R4 * 256
+
+  ip=20 if R4 > R2 {
+  ip=21   GOTO L6 // ip=23
+        } else {
+          GOTO L7 // ip=22
+        }
+
+ip=17 seti 0 3 1
+ip=18 addi 1 1 4
+ip=19 muli 4 256 4
+ip=20 gtrr 4 2 4
+ip=21 addr 4 5 5
+ip=22 addi 5 1 5
+
+L6:
+  ip=23 GOTO L8
+
+ip=23 seti 25 8 5
+
+L7:
+  ip=24 R1 = R1 + 1
+  ip=25 R5 = 17 // GOTO ip=18
+ip=24 addi 1 1 1
+ip=25 seti 17 9 5
+
+L8:
+    ip=26 R2=R1
+    ip=27 R5 = 7 // GOTO ip=8
+
+ip=26 setr 1 4 2
+ip=27 seti 7 5 5
+
+L4:
+  ip=28 if R3 == 0 {
+          HALT // R5 will become 31
+        } else {
+          R5 = 5 // GOTO ip=6
+        }
+
+ip=28 eqrr 3 0 1
+ip=29 addr 1 5 5
+ip=30 seti 5 4 5
+
+*/
 impl crate::Puzzle for Puzzle21 {
     fn part1(&self) -> String {
         let mut cpu = self.cpu.clone();
