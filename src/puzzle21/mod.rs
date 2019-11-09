@@ -258,6 +258,47 @@ ip=28 eqrr 3 0 1
 ip=29 addr 1 5 5
 ip=30 seti 5 4 5
 
+
+===
+R0..R5=0
+
+R3=123
+do {
+    R3 = R3 & 456
+} while R3 != 72
+
+R3=0
+L0: (ip=6)
+R2 = R3 | 65536
+R3 = 14070682
+L2: (ip=8)
+R1 = R2 & 255
+R3 = R3 + R1
+R3 = R3 & 16777215 // R3 & FFFFFF
+R3 = R3 * 65899
+R3 = R3 & 16777215 // R3 & FFFFFF
+
+if(256 > R2) {
+  if R3 == 0 {
+    HALT // R5 will become 31
+  } else {
+    GOTO L0; // TODO make this a for/while loop
+  }
+} else {
+    R1 = 0
+    L1: (ip=18)
+    R4 = R1 + 1
+    R4 = R4 * 256
+
+    if R4 > R2 {
+        R2=R1
+        GOTO L2; // TODO make this a for/while loop
+    } else {
+       R1 = R1 + 1
+       GOTO L1 // TODO: make this a for/while loop
+    }
+}
+
 */
 impl crate::Puzzle for Puzzle21 {
     fn part1(&self) -> String {
