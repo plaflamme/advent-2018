@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use regex::Regex;
+use std::collections::HashSet;
 
 #[allow(non_camel_case_types)]
 #[derive(PartialEq, Eq, Hash, enum_utils::FromStr, Clone, Debug)]
@@ -74,7 +75,7 @@ impl OpCode {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 struct Instr {
     code: OpCode,
     a: usize,
@@ -102,36 +103,49 @@ impl FromStr for Instr {
 struct Cpu {
     ip_register: usize,
     ip: usize,
-    bench: [usize; 6],
-    breakpoint: Option<usize>
+    bench: [usize; 6]
 }
 
 impl Cpu {
     fn new(ip_register: usize) -> Self {
-        Cpu { ip_register, ip: 0, bench: [0;6], breakpoint: None }
+        Cpu { ip_register, ip: 0, bench: [0;6] }
     }
 
-    fn run(&mut self, program: &Vec<Instr>) {
-        let mut clock = 0u64;
+    fn step(&mut self, i: &Instr) {
+        // before the instruction, set the instr pointer register to the value of the instr pointer.
+        self.bench[self.ip_register] = self.ip;
+
+//        print!("ip={} {:?} {:?}", self.ip, self.bench, i);
+        i.code.run(&mut self.bench, i.a, i.b, i.c);
+        // after the instruction, set the instr pointer to the value of the instr register and increment by one
+        self.ip = self.bench[self.ip_register] + 1;
+//        println!(" {:?}", self.bench);
+    }
+}
+
+enum State {
+    Breakpoint,
+    Halt
+}
+
+struct Debugger {
+    cpu: Cpu,
+    program: Vec<Instr>,
+    breakpoint: usize
+}
+
+impl Debugger {
+    fn run(&mut self) -> State {
         loop {
-            match program.get(self.ip as usize) {
-                None => break,
-                Some(i) => {
-                    // before the instruction, set the instr pointer register to the value of the instr pointer.
-                    self.bench[self.ip_register] = self.ip;
-                    match self.breakpoint {
-                        None => (),
-                        Some(bp) => if bp == self.ip { break }
+            match self.program.get(self.cpu.ip) {
+                None => break  State::Halt,
+                Some(instr) => {
+                    self.cpu.step(instr);
+                    if self.cpu.ip == self.breakpoint {
+                       break State::Breakpoint;
                     }
-                    print!("({}) ip={} {:?} {:?}", clock, self.ip, self.bench, i);
-                    i.code.run(&mut self.bench, i.a, i.b, i.c);
-                    // after the instruction, set the instr pointer to the value of the instr register and increment by one
-                    // TODO: the instructions say this should only be done if the instruction modified the register, but I guess there's no harm to do it always?
-                    self.ip = self.bench[self.ip_register] + 1;
-                    println!(" {:?}", self.bench);
-                    clock += 1;
                 }
-            }
+            };
         }
     }
 }
@@ -296,14 +310,24 @@ do {
 */
 impl crate::Puzzle for Puzzle21 {
     fn part1(&self) -> String {
-        let mut cpu = self.cpu.clone();
         // ip=28 is when we compare against register 0 with R3, so we simply need to stop at that point and check what the contents of R3 is
-        cpu.breakpoint = Some(28);
-        cpu.run(&self.program);
-        cpu.bench[3].to_string()
+        let mut debug = Debugger { cpu: self.cpu.clone(), program: self.program.clone(), breakpoint: 28 };
+        debug.run();
+        debug.cpu.bench[3].to_string()
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        // the most instructions is right before R3 loops around to some value we've seen before.
+        let mut debug = Debugger { cpu: self.cpu.clone(), program: self.program.clone(), breakpoint: 28 };
+        let mut seen = HashSet::new();
+        let mut prev = 0 as usize;
+        let found = loop {
+            debug.run();
+            if !seen.insert(debug.cpu.bench[3]) {
+                break prev;
+            }
+            prev = debug.cpu.bench[3];
+        };
+        found.to_string()
     }
 }
