@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use std::collections::HashMap;
+use pathfinding::directed::dijkstra;
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 struct Pt {
@@ -10,6 +11,17 @@ struct Pt {
 impl Pt {
     fn new(x: u32, y: u32) -> Self {
         Pt { y, x }
+    }
+
+    fn neighbours(&self) -> Vec<Pt> {
+        let one = if self.x > 0 { Some(Pt::new(self.x - 1, self.y)) } else { None };
+        let two = if self.y > 0 { Some(Pt::new(self.x, self.y-1)) } else { None };
+
+        one.iter()
+            .chain(two.iter())
+            .cloned()
+            .chain(vec![Pt::new(self.x + 1, self.y), Pt::new(self.x, self.y + 1)])
+            .collect()
     }
 }
 
@@ -29,6 +41,24 @@ enum Type {
     Rocky,
     Narrow,
     Wet
+}
+
+impl Type {
+    fn accepts(&self, tool: &Option<Tool>) -> bool {
+        match (self, tool) {
+            (Type::Rocky, Some(_)) => true,
+            (Type::Rocky, None) => false,
+
+            (Type::Wet, Some(Tool::Gear)) => true,
+            (Type::Wet, None) => true,
+            (Type::Wet, Some(Tool::Torch)) => false,
+
+
+            (Type::Narrow, Some(Tool::Torch)) => true,
+            (Type::Narrow, None) => true,
+            (Type::Narrow, Some(Tool::Gear)) => false,
+        }
+    }
 }
 
 struct Analyzer {
@@ -94,6 +124,65 @@ impl Analyzer {
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Clone)]
+enum Tool {
+    Gear,
+    Torch
+}
+
+impl Tool {
+    fn all() -> Vec<Option<Tool>> {
+        vec![
+            None,
+            Some(Tool::Gear),
+            Some(Tool::Torch)
+        ]
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct State {
+    at: Pt,
+    holding: Option<Tool>
+}
+
+impl State {
+
+    fn new() -> Self {
+        State { at: Pt::new(0,0), holding: Some(Tool::Torch) }
+    }
+
+    fn solve(analyzer: &mut Analyzer) -> u32 {
+        let target = State { at: analyzer.target, holding: Some(Tool::Torch) };
+        dijkstra::dijkstra(
+            &State::new(),
+            |state| { state.neighbours(analyzer) },
+            |state| { state == &target }
+        ).map(|(_, cost)| cost).unwrap()
+    }
+
+    fn neighbours(&self, analyzer: &mut Analyzer) -> Vec<(State, u32)> {
+        // all neighbours that accept what we're holding (cost 1 minute)
+        //   as well as this same pt but using a different tool (cost 7 minutes)
+        self.at.neighbours()
+            .iter()
+            .filter_map(|other| {
+                let other_type = &analyzer.region_type(*other);
+                if !other_type.accepts(&self.holding) { None } else {
+                    Some( (State { at: *other, holding: self.holding.clone() }, 1) )
+                }
+            })
+            .chain(
+                Tool::all()
+                    .iter()
+                    .filter(|&tool| tool != &self.holding)
+                    .map(|tool| (State { at: self.at, holding: tool.clone() }, 7))
+                    .collect::<Vec<_>>()
+            )
+            .collect()
+    }
+}
+
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
     let lines = input.lines().collect::<Vec<_>>();
     let depth = u32::from_str(lines[0].split_ascii_whitespace().last().unwrap()).unwrap();
@@ -113,7 +202,8 @@ impl crate::Puzzle for Puzzle22 {
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let mut analyzer = Analyzer::new(self.depth, self.target);
+        State::solve(&mut analyzer).to_string()
     }
 }
 
