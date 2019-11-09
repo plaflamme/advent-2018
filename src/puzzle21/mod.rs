@@ -102,12 +102,13 @@ impl FromStr for Instr {
 struct Cpu {
     ip_register: usize,
     ip: usize,
-    bench: [usize; 6]
+    bench: [usize; 6],
+    breakpoint: Option<usize>
 }
 
 impl Cpu {
     fn new(ip_register: usize) -> Self {
-        Cpu { ip_register, ip: 0, bench: [0;6] }
+        Cpu { ip_register, ip: 0, bench: [0;6], breakpoint: None }
     }
 
     fn run(&mut self, program: &Vec<Instr>) {
@@ -118,6 +119,10 @@ impl Cpu {
                 Some(i) => {
                     // before the instruction, set the instr pointer register to the value of the instr pointer.
                     self.bench[self.ip_register] = self.ip;
+                    match self.breakpoint {
+                        None => (),
+                        Some(bp) => if bp == self.ip { break }
+                    }
                     print!("({}) ip={} {:?} {:?}", clock, self.ip, self.bench, i);
                     i.code.run(&mut self.bench, i.a, i.b, i.c);
                     // after the instruction, set the instr pointer to the value of the instr register and increment by one
@@ -303,8 +308,10 @@ if(256 > R2) {
 impl crate::Puzzle for Puzzle21 {
     fn part1(&self) -> String {
         let mut cpu = self.cpu.clone();
+        // ip=28 is when we compare against register 0 with R3, so we simply need to stop at that point and check what the contents of R3 is
+        cpu.breakpoint = Some(28);
         cpu.run(&self.program);
-        unimplemented!()
+        cpu.bench[3].to_string()
     }
 
     fn part2(&self) -> String {
