@@ -12,6 +12,12 @@ impl Pt {
     fn new(x: i32, y: i32, z: i32) -> Self {
         Pt { x, y, z }
     }
+
+    fn distance(&self, other: &Pt) -> u32 {
+        ((self.x - other.x).abs() +
+            (self.y - other.y).abs() +
+            (self.z - other.z).abs()) as u32
+    }
 }
 
 impl FromStr for Pt {
@@ -33,6 +39,12 @@ impl FromStr for Pt {
 struct Nanobot {
     pos: Pt,
     signal_radius: u32
+}
+
+impl Nanobot {
+    fn in_range(&self, other: &Nanobot) -> bool {
+        self.pos.distance(&other.pos) <= self.signal_radius
+    }
 }
 
 impl FromStr for Nanobot {
@@ -65,7 +77,8 @@ struct Puzzle23 {
 
 impl crate::Puzzle for Puzzle23 {
     fn part1(&self) -> String {
-        unimplemented!()
+        let strongest = self.bots.iter().max_by_key(|bot| bot.signal_radius).expect("no bots");
+        self.bots.iter().filter(|bot| strongest.in_range(bot)).count().to_string()
     }
 
     fn part2(&self) -> String {
@@ -78,9 +91,7 @@ mod tests {
     use super::*;
     use crate::Puzzle;
 
-    #[test]
-    fn test_parse() {
-        let bots = parse("pos=<0,0,0>, r=4
+    const EXAMPLE: &str ="pos=<0,0,0>, r=4
 pos=<1,0,0>, r=1
 pos=<4,0,0>, r=3
 pos=<0,2,0>, r=1
@@ -88,12 +99,21 @@ pos=<0,5,0>, r=3
 pos=<0,0,3>, r=1
 pos=<1,1,1>, r=1
 pos=<1,1,2>, r=1
-pos=<1,3,1>, r=1");
+pos=<1,3,1>, r=1";
 
+    #[test]
+    fn test_parse() {
+        let bots = parse(EXAMPLE);
         assert_eq!(9, bots.len());
         assert_eq!(Nanobot { pos: Pt::new(0,0,0), signal_radius: 4 }, bots[0]);
         assert_eq!(Nanobot { pos: Pt::new(1,0,0), signal_radius: 1 }, bots[1]);
         assert_eq!(Nanobot { pos: Pt::new(1,3,1), signal_radius: 1 }, bots[bots.len()-1]);
+    }
+
+    #[test]
+    fn test_part1() {
+        let pzl = Puzzle23 { bots: parse(EXAMPLE) };
+        assert_eq!("7", pzl.part1());
     }
 
 }
