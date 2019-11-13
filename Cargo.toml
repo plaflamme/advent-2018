@@ -19,3 +19,5 @@ enum-utils = "0.1.2"
 pathfinding = "2.0.0"
 
 lazy_static = "1.4.0"
+
+z3 = "0.4.0"
