@@ -23,6 +23,7 @@ mod puzzle20;
 mod puzzle21;
 mod puzzle22;
 mod puzzle23;
+mod puzzle24;
 
 pub trait Puzzle {
     fn part1(&self) -> String;
@@ -60,6 +61,7 @@ fn main() {
         puzzle21::mk,
         puzzle22::mk,
         puzzle23::mk,
+        puzzle24::mk,
     );
     let args = Cli::from_args();
 
