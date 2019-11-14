@@ -1,7 +1,9 @@
 use std::str::FromStr;
-use std::collections::HashSet;
+use std::collections::{HashSet, BinaryHeap};
 use regex::Regex;
 use std::num::ParseIntError;
+use std::cmp::{Reverse, Ordering};
+use std::fmt::{Display, Formatter, Error};
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 enum Attack {
@@ -39,8 +41,29 @@ struct Group {
 }
 
 impl Group {
+
     fn effective_power(&self) -> u32 {
         self.units * self.attack_strength
+    }
+
+    // By default, an attacking group would deal damage equal to its effective power to the defending group.
+    //   However, if the defending group is immune to the attacking group's attack type, the defending group instead takes no damage;
+    //   if the defending group is weak to the attacking group's attack type, the defending group instead takes double damage.
+    fn damage_dealt(&self, other: &Group) -> u32 {
+        let base_damage = self.effective_power();
+        if other.immunity.contains(&self.attack_type) {
+            0
+        } else if other.weakness.contains(&self.attack_type) {
+            base_damage * 2
+        } else {
+            base_damage
+        }
+    }
+
+    fn take_damage(&mut self, damage: u32) -> u32 {
+        let deaths = u32::min(self.units, damage / self.unit_hit_pts);
+        self.units -= deaths;
+        deaths
     }
 }
 
@@ -112,13 +135,164 @@ impl FromStr for Group {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+struct AttackTarget {
+    side: Side,
+    attacking_group: usize,
+    attacking_initiative: u32,
+    selection: Option<TargetSelection>
+}
+
+impl PartialOrd for AttackTarget {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.attacking_initiative.cmp(&other.attacking_initiative))
+    }
+}
+
+impl Ord for AttackTarget {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.attacking_initiative.cmp(&other.attacking_initiative)
+    }
+}
+
+impl Display for AttackTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match &self.selection {
+            None =>
+                write!(f, "{:?} group {} selects no target", self.side, self.attacking_group),
+            Some(selection) =>
+                write!(f, "{:?} group {} would deal defending group {} {} damage", self.side, self.attacking_group, selection.defending_group, selection.damage)
+        }
+
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+struct TargetSelection {
+    defending_group: usize,
+    damage: u32
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+enum Side {
+    ImmuneSystem,
+    Infection
+}
+
+#[derive(Clone, Debug)]
 struct Army {
+    side: Side,
     groups: Vec<Group>
 }
 
+impl Army {
+    fn target_selection(&self, enemies: &Army) -> Vec<AttackTarget> {
+        let mut our_groups = self.groups.iter().cloned().enumerate().collect::<Vec<_>>();
+        our_groups.sort_by_key(|(_, group)| {
+            // In decreasing order of effective power, groups choose their targets; in a tie, the group with the higher initiative chooses first.
+            Reverse((group.effective_power(), group.initiative))
+        });
+
+        // Defending groups can only be chosen as a target by one attacking group
+        let mut chosen = HashSet::new();
+
+        our_groups
+            .iter()
+            .map(|(group_idx, group)| {
+                let targets = enemies.groups.iter()
+                    .enumerate()
+                    // The attacking group chooses to target the group in the enemy army to which it would deal the most damage
+                    //   If an attacking group is considering two defending groups to which it would deal equal damage, it chooses to target the defending group with the largest effective power;
+                    //   if there is still a tie, it chooses the defending group with the highest initiative.
+                    .map(|(idx, enemy)| (group.damage_dealt(&enemy), enemy.effective_power(), enemy.initiative, idx))
+                    .filter(|(damage, _, _, idx)| *damage > 0 && !chosen.contains(idx))
+                    .collect::<BinaryHeap<_>>();
+
+                match targets.peek() {
+                    None => AttackTarget { side: self.side, attacking_group: *group_idx, attacking_initiative: group.initiative, selection: None },
+                    Some((damage, _, _, target)) => {
+                        chosen.insert(*target);
+                        AttackTarget { side: self.side, attacking_group: *group_idx, attacking_initiative: group.initiative, selection: Some(TargetSelection{ defending_group: *target, damage: *damage }) }
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+    }
+}
+
+#[derive(Debug)]
+struct AttackOutcome {
+    attack_side: Side,
+    attacking_group: usize,
+    defending_group: usize,
+    damage_dealt: u32,
+    unit_loss: u32
+}
+
+impl Display for AttackOutcome {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "{:?} group {} attacks defending group {}, dealing {} damage killing {} units", self.attack_side, self.attacking_group, self.defending_group, self.damage_dealt, self.unit_loss)
+    }
+}
+
+#[derive(Debug)]
+struct FightOutcome {
+    battlefield: Battlefield,
+    target_selections: Vec<AttackTarget>,
+    attack_outcomes: Vec<AttackOutcome>
+}
+
+#[derive(Clone, Debug)]
 struct Battlefield {
     immune_system: Army,
     infection: Army
+}
+
+impl Battlefield {
+
+    fn fight(&self) -> FightOutcome {
+        let immune_selection = self.immune_system.target_selection(&self.infection);
+        let infection_selection = self.infection.target_selection(&self.immune_system);
+
+        let mut attack_order = immune_selection.iter().chain(&infection_selection).collect::<BinaryHeap<_>>();
+
+        let mut immune_system_groups = self.immune_system.groups.clone();
+        let mut infection_groups = self.infection.groups.clone();
+        let mut attack_outcomes = Vec::new();
+
+        while let Some(attack) = attack_order.pop() {
+            let attacking_group = match attack.side {
+                Side::ImmuneSystem => immune_system_groups.get(attack.attacking_group).unwrap().clone(),
+                Side::Infection => infection_groups.get(attack.attacking_group).unwrap().clone()
+            };
+
+            if attacking_group.units == 0 { continue }
+
+            if let Some(selection) = &attack.selection {
+                let defending_group = match attack.side {
+                    Side::ImmuneSystem => infection_groups.get_mut(selection.defending_group).unwrap(),
+                    Side::Infection => immune_system_groups.get_mut(selection.defending_group).unwrap()
+                };
+
+                // recompute damage since the attacking group size has potentially changed
+                let damage_dealt = attacking_group.damage_dealt(defending_group);
+                let unit_loss = defending_group.take_damage(damage_dealt);
+                attack_outcomes.push(AttackOutcome { attack_side: attack.side, attacking_group: attack.attacking_group, defending_group: selection.defending_group, damage_dealt, unit_loss } )
+            }
+        }
+
+        immune_system_groups.retain(|g| g.units > 0);
+        infection_groups.retain(|g| g.units > 0);
+
+        FightOutcome {
+            battlefield: Battlefield {
+                immune_system: Army { side: Side::ImmuneSystem, groups: immune_system_groups },
+                infection: Army { side: Side::Infection, groups: infection_groups },
+            },
+            target_selections: immune_selection.iter().chain(infection_selection.iter()).cloned().collect(),
+            attack_outcomes
+        }
+    }
 }
 
 impl FromStr for Battlefield {
@@ -126,14 +300,33 @@ impl FromStr for Battlefield {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let immune_system = Army {
+            side: Side::ImmuneSystem,
             groups: Result::from(s.lines().skip(1).take_while(|line| !line.is_empty()).map(|gr| Group::from_str(gr)).collect())?
         };
         let infection = Army {
+            side: Side::Infection,
             groups: Result::from(s.lines().skip_while(|line| !line.is_empty()).skip(2).map(|gr| Group::from_str(gr)).collect())?
         };
 
         Ok(Battlefield { immune_system, infection })
     }
+}
+
+fn resolve_battle(start: Battlefield) -> Battlefield {
+    let mut battlefield = start;
+    loop {
+        if battlefield.immune_system.groups.is_empty() || battlefield.infection.groups.is_empty() {
+            break
+        }
+        let outcome = battlefield.fight();
+        outcome.target_selections.iter().for_each(|outcome| println!("{}", outcome));
+        println!("");
+        outcome.attack_outcomes.iter().for_each(|outcome| println!("{}", outcome));
+
+        battlefield = outcome.battlefield;
+    }
+
+    battlefield
 }
 
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
@@ -146,7 +339,14 @@ struct Puzzle24 {
 
 impl crate::Puzzle for Puzzle24 {
     fn part1(&self) -> String {
-        unimplemented!()
+        let resolved = resolve_battle(self.battlefield.clone());
+        let winning = if resolved.immune_system.groups.len() > 0 {
+            resolved.immune_system
+        } else {
+            resolved.infection
+        };
+
+        winning.groups.iter().map(|g| g.units).sum::<u32>().to_string()
     }
 
     fn part2(&self) -> String {
@@ -207,5 +407,31 @@ Infection:
             initiative: 2
         };
         assert_eq!(Ok(group), Group::from_str("5463 units each with 1741 hit points with an attack that does 2 cold damage at initiative 2"));
+    }
+
+    #[test]
+    fn test_target_selection() {
+        let battlefield = Battlefield::from_str(EXAMPLE).unwrap();
+
+        let immune_selection = [
+            AttackTarget { side: Side::ImmuneSystem, attacking_group: 0, attacking_initiative: 2, selection: Some(TargetSelection { defending_group: 1, damage: 153238 }) },
+            AttackTarget { side: Side::ImmuneSystem, attacking_group: 1, attacking_initiative: 3, selection: Some(TargetSelection { defending_group: 0, damage: 24725 }) }
+        ];
+        let infection_selection = [
+            AttackTarget { side: Side::Infection, attacking_group: 0, attacking_initiative: 1, selection: Some(TargetSelection { defending_group: 0, damage: 185832 }) },
+            AttackTarget { side: Side::Infection, attacking_group: 1, attacking_initiative: 4, selection: Some(TargetSelection { defending_group: 1, damage: 107640 }) }
+        ];
+        assert_eq!(immune_selection.to_vec(), battlefield.immune_system.target_selection(&battlefield.infection));
+        assert_eq!(infection_selection.to_vec(), battlefield.infection.target_selection(&battlefield.immune_system));
+    }
+
+    #[test]
+    fn test_fight() {
+        let resolved = resolve_battle(Battlefield::from_str(EXAMPLE).unwrap());
+
+        assert_eq!(0, resolved.immune_system.groups.len());
+        assert_eq!(2, resolved.infection.groups.len());
+        assert_eq!(782, resolved.infection.groups[0].units);
+        assert_eq!(4434, resolved.infection.groups[1].units);
     }
 }
