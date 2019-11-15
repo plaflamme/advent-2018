@@ -387,11 +387,12 @@ impl crate::Puzzle for Puzzle24 {
     }
 
     fn part2(&self) -> String {
+        let mut remaining_units = 0;
         let mut losing_max_heap = BinaryHeap::new();
         let mut winning_min_heap = BinaryHeap::new();
-        let result = loop {
+        loop {
             let boost = match (losing_max_heap.peek(), winning_min_heap.peek()) {
-                (Some(lose), Some(Reverse(win))) if *win == lose + 1 => break win,
+                (Some(lose), Some(Reverse(win))) if *win == lose + 1 => break,
                 (Some(lose), Some(Reverse(win))) => lose + (win - lose) / 2,
                 (Some(lose), None) => lose * 2,
                 (None, Some(Reverse(win))) => win / 2,
@@ -403,6 +404,7 @@ impl crate::Puzzle for Puzzle24 {
                 None => losing_max_heap.push(boost),
                 Some(resolved) => {
                     if resolved.immune_system.groups.len() > 0 {
+                        remaining_units = resolved.immune_system.total_units();
                         winning_min_heap.push(Reverse(boost));
                     } else {
                         losing_max_heap.push(boost);
@@ -410,7 +412,7 @@ impl crate::Puzzle for Puzzle24 {
                 }
             }
         };
-        result.to_string()
+        remaining_units.to_string()
     }
 }
 
@@ -499,6 +501,6 @@ Infection:
     #[test]
     fn test_part2() {
         let pzl = Puzzle24 { battlefield: Battlefield::from_str(EXAMPLE).unwrap() };
-        assert_eq!("1570", pzl.part2());
+        assert_eq!("51", pzl.part2());
     }
 }
