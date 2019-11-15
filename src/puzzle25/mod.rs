@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use std::num::ParseIntError;
+use std::collections::HashSet;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 struct Pt {
@@ -46,6 +47,22 @@ struct Puzzle25 {
     pts: Vec<Pt>
 }
 
+impl Puzzle25 {
+    fn components(&self) -> Vec<HashSet<Pt>> {
+        pathfinding::undirected::connected_components::connected_components(
+            self.pts.as_slice(),
+            |pt| {
+                self.neighbours(pt)
+            }
+        )
+    }
+
+    fn neighbours(&self, pt: &Pt) -> Vec<Pt> {
+        self.pts.iter().filter(|other| pt.distance(*other) <= 3).cloned().collect()
+    }
+
+}
+
 impl FromStr for Puzzle25 {
     type Err = ParseIntError;
 
@@ -61,7 +78,7 @@ impl FromStr for Puzzle25 {
 
 impl crate::Puzzle for Puzzle25 {
     fn part1(&self) -> String {
-        unimplemented!()
+        self.components().len().to_string()
     }
 
     fn part2(&self) -> String {
@@ -82,11 +99,59 @@ mod test {
 9,0,0,0
 12,0,0,0";
 
+    const EX2: &str = "-1,2,2,0
+0,0,2,-2
+0,0,0,-2
+-1,2,0,0
+-2,-2,-2,2
+3,0,2,-1
+-1,3,2,2
+-1,0,-1,0
+0,2,1,-2
+3,0,0,0";
+
+    const EX3: &str = "1,-1,0,1
+2,0,-1,0
+3,2,-1,0
+0,0,3,1
+0,0,-1,-1
+2,3,-2,0
+-2,2,0,0
+2,-2,0,-1
+1,-1,0,-1
+3,2,0,2";
+
+    const EX4: &str = "1,-1,-1,-2
+-2,-2,0,1
+0,2,1,3
+-2,3,-2,1
+0,2,3,-2
+-1,-1,1,-2
+0,-2,-1,0
+-2,2,3,-1
+1,2,2,0
+-1,-2,0,-2";
+
     #[test]
     fn test_parse() {
         let pzl = Puzzle25::from_str(EX1).unwrap();
         assert_eq!(8, pzl.pts.len());
         assert_eq!(Some(&Pt::new(0,0,0,0)), pzl.pts.first());
         assert_eq!(Some(&Pt::new(12,0,0,0)), pzl.pts.last());
+    }
+
+    #[test]
+    fn test_components() {
+        let pzl = Puzzle25::from_str(EX1).unwrap();
+        assert_eq!(2, pzl.components().len());
+
+        let pzl = Puzzle25::from_str(EX2).unwrap();
+        assert_eq!(4, pzl.components().len());
+
+        let pzl = Puzzle25::from_str(EX3).unwrap();
+        assert_eq!(3, pzl.components().len());
+
+        let pzl = Puzzle25::from_str(EX4).unwrap();
+        assert_eq!(8, pzl.components().len());
     }
 }
