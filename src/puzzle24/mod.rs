@@ -4,6 +4,7 @@ use regex::Regex;
 use std::num::ParseIntError;
 use std::cmp::{Reverse, Ordering};
 use std::fmt::{Display, Formatter, Error};
+use itertools::Itertools;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 enum Attack {
@@ -218,6 +219,17 @@ impl Army {
             })
             .collect::<Vec<_>>()
     }
+
+    fn boost(&self, by: u32) -> Army {
+        Army {
+            side: self.side,
+            groups: self.groups.iter().map(|g| {
+                let mut boosted = g.clone();
+                boosted.attack_strength += by;
+                boosted
+            }).collect()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -293,6 +305,13 @@ impl Battlefield {
             attack_outcomes
         }
     }
+
+    fn boost(&self, by: u32) -> Battlefield {
+        Battlefield {
+            immune_system: self.immune_system.boost(by),
+            infection: self.infection.clone(),
+        }
+    }
 }
 
 impl FromStr for Battlefield {
@@ -315,6 +334,10 @@ impl FromStr for Battlefield {
 fn resolve_battle(start: Battlefield) -> Battlefield {
     let mut battlefield = start;
     loop {
+        println!("ImmuneSystem has {} groups", battlefield.immune_system.groups.len());
+        println!("  {}", battlefield.immune_system.groups.iter().map(|g| format!("{:?}", g)).join(","));
+        println!("Infection has {} groups", battlefield.infection.groups.len());
+        println!("  {}", battlefield.infection.groups.iter().map(|g| format!("{:?}", g)).join(","));
         if battlefield.immune_system.groups.is_empty() || battlefield.infection.groups.is_empty() {
             break
         }
@@ -322,6 +345,7 @@ fn resolve_battle(start: Battlefield) -> Battlefield {
         outcome.target_selections.iter().for_each(|outcome| println!("{}", outcome));
         println!("");
         outcome.attack_outcomes.iter().for_each(|outcome| println!("{}", outcome));
+        println!("");
 
         battlefield = outcome.battlefield;
     }
@@ -350,13 +374,33 @@ impl crate::Puzzle for Puzzle24 {
     }
 
     fn part2(&self) -> String {
-        unimplemented!()
+        let mut losing_max_heap = BinaryHeap::new();
+        let mut winning_min_heap = BinaryHeap::new();
+        let result = loop {
+            let boost = match (losing_max_heap.peek(), winning_min_heap.peek()) {
+                (Some(lose), Some(Reverse(win))) if *win == lose + 1 => break win,
+                (Some(lose), Some(Reverse(win))) => lose + (win - lose) / 2,
+                (Some(lose), None) => lose * 2,
+                (None, Some(Reverse(win))) => win / 2,
+                (None, None) => 1
+            };
+
+            println!("Boost: {}", boost);
+            let resolved = resolve_battle(self.battlefield.boost(boost));
+            if resolved.immune_system.groups.len() > 0 {
+                winning_min_heap.push(Reverse(boost));
+            } else {
+                losing_max_heap.push(boost);
+            }
+        };
+        result.to_string()
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::Puzzle;
 
     const EXAMPLE: &str = "Immune System:
 17 units each with 5390 hit points (weak to radiation, bludgeoning) with an attack that does 4507 fire damage at initiative 2
@@ -433,5 +477,11 @@ Infection:
         assert_eq!(2, resolved.infection.groups.len());
         assert_eq!(782, resolved.infection.groups[0].units);
         assert_eq!(4434, resolved.infection.groups[1].units);
+    }
+
+    #[test]
+    fn test_part2() {
+        let pzl = Puzzle24 { battlefield: Battlefield::from_str(EXAMPLE).unwrap() };
+        assert_eq!("1570", pzl.part2());
     }
 }
