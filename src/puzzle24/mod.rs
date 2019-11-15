@@ -230,6 +230,10 @@ impl Army {
             }).collect()
         }
     }
+
+    fn total_units(&self) -> u32 {
+        self.groups.iter().map(|g|g.units).sum()
+    }
 }
 
 #[derive(Debug)]
@@ -312,6 +316,10 @@ impl Battlefield {
             infection: self.infection.clone(),
         }
     }
+
+    fn total_units(&self) -> u32 {
+        self.immune_system.total_units() + self.infection.total_units()
+    }
 }
 
 impl FromStr for Battlefield {
@@ -331,7 +339,7 @@ impl FromStr for Battlefield {
     }
 }
 
-fn resolve_battle(start: Battlefield) -> Battlefield {
+fn resolve_battle(start: Battlefield) -> Option<Battlefield> { // None when it's a tie
     let mut battlefield = start;
     loop {
         println!("ImmuneSystem has {} groups", battlefield.immune_system.groups.len());
@@ -347,10 +355,15 @@ fn resolve_battle(start: Battlefield) -> Battlefield {
         outcome.attack_outcomes.iter().for_each(|outcome| println!("{}", outcome));
         println!("");
 
+        // stalemate detection for part 2.
+        if battlefield.total_units() == outcome.battlefield.total_units() {
+            return None // using return sucks
+        }
+
         battlefield = outcome.battlefield;
     }
 
-    battlefield
+    Some(battlefield)
 }
 
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
@@ -363,7 +376,7 @@ struct Puzzle24 {
 
 impl crate::Puzzle for Puzzle24 {
     fn part1(&self) -> String {
-        let resolved = resolve_battle(self.battlefield.clone());
+        let resolved = resolve_battle(self.battlefield.clone()).expect("unexpected stalemate in part1");
         let winning = if resolved.immune_system.groups.len() > 0 {
             resolved.immune_system
         } else {
@@ -386,11 +399,15 @@ impl crate::Puzzle for Puzzle24 {
             };
 
             println!("Boost: {}", boost);
-            let resolved = resolve_battle(self.battlefield.boost(boost));
-            if resolved.immune_system.groups.len() > 0 {
-                winning_min_heap.push(Reverse(boost));
-            } else {
-                losing_max_heap.push(boost);
+            match resolve_battle(self.battlefield.boost(boost)) {
+                None => losing_max_heap.push(boost),
+                Some(resolved) => {
+                    if resolved.immune_system.groups.len() > 0 {
+                        winning_min_heap.push(Reverse(boost));
+                    } else {
+                        losing_max_heap.push(boost);
+                    }
+                }
             }
         };
         result.to_string()
@@ -471,7 +488,7 @@ Infection:
 
     #[test]
     fn test_fight() {
-        let resolved = resolve_battle(Battlefield::from_str(EXAMPLE).unwrap());
+        let resolved = resolve_battle(Battlefield::from_str(EXAMPLE).unwrap()).unwrap();
 
         assert_eq!(0, resolved.immune_system.groups.len());
         assert_eq!(2, resolved.infection.groups.len());
