@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use regex::Regex;
+use std::str::FromStr;
 
 use z3;
 use z3::ast::Ast;
@@ -8,7 +8,7 @@ use z3::ast::Ast;
 struct Pt {
     x: i32,
     y: i32,
-    z: i32
+    z: i32,
 }
 
 impl Pt {
@@ -17,9 +17,7 @@ impl Pt {
     }
 
     fn distance(&self, other: &Pt) -> u32 {
-        ((self.x - other.x).abs() +
-            (self.y - other.y).abs() +
-            (self.z - other.z).abs()) as u32
+        ((self.x - other.x).abs() + (self.y - other.y).abs() + (self.z - other.z).abs()) as u32
     }
 }
 
@@ -28,20 +26,18 @@ impl FromStr for Pt {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<_> = s.split(',').collect();
-        Ok(
-            Pt {
-                x: i32::from_str(parts[0])?,
-                y: i32::from_str(parts[1])?,
-                z: i32::from_str(parts[2])?,
-            }
-        )
+        Ok(Pt {
+            x: i32::from_str(parts[0])?,
+            y: i32::from_str(parts[1])?,
+            z: i32::from_str(parts[2])?,
+        })
     }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 struct Nanobot {
     pos: Pt,
-    signal_radius: u32
+    signal_radius: u32,
 }
 
 impl Nanobot {
@@ -57,17 +53,19 @@ impl FromStr for Nanobot {
         let re = Regex::new("^pos=<(.+)>, r=(\\d+)$").unwrap();
         let caps = re.captures(s).expect(&format!("unmatched input: {}", s));
 
-        Ok(
-            Nanobot {
-                pos: Pt::from_str(&caps[1])?,
-                signal_radius: u32::from_str(&caps[2])?,
-            }
-        )
+        Ok(Nanobot {
+            pos: Pt::from_str(&caps[1])?,
+            signal_radius: u32::from_str(&caps[2])?,
+        })
     }
 }
 
-fn dist<'ctx>(a: &z3::ast::Int<'ctx>, b: &z3::ast::Int<'ctx>, zero: &z3::ast::Int<'ctx>) -> z3::ast::Int<'ctx> {
-    let diff = a.sub(&[&b]);
+fn dist<'ctx>(
+    a: &z3::ast::Int<'ctx>,
+    b: &z3::ast::Int<'ctx>,
+    zero: &z3::ast::Int<'ctx>,
+) -> z3::ast::Int<'ctx> {
+    let diff = a - b;
     let lt_zero = diff.lt(&zero);
     lt_zero.ite::<z3::ast::Int>(&diff.unary_minus(), &diff)
 }
@@ -75,16 +73,14 @@ fn dist<'ctx>(a: &z3::ast::Int<'ctx>, b: &z3::ast::Int<'ctx>, zero: &z3::ast::In
 #[derive(Debug)]
 struct Solution {
     bots_in_range: u32,
-    optimal: Pt
+    optimal: Pt,
 }
 
 fn solve(bots: &Vec<Nanobot>) -> Solution {
     let cfg = z3::Config::new();
     let ctx = z3::Context::new(&cfg);
 
-    let int = |i: i32| -> z3::ast::Int {
-        z3::ast::Int::from_u64(&ctx, i as u64)
-    };
+    let int = |i: i32| -> z3::ast::Int { z3::ast::Int::from_u64(&ctx, i as u64) };
 
     // define some constants
     let one = int(1);
@@ -105,9 +101,11 @@ fn solve(bots: &Vec<Nanobot>) -> Solution {
     let optimizer = z3::Optimize::new(&ctx);
 
     // for each bot, add a constraint in the solver that states that in_range[i] == 1 when the bot is in range of (x,y,z) and 0 otherwise.
-    for (i,bot) in bots.iter().enumerate() {
+    for (i, bot) in bots.iter().enumerate() {
         // compute the distance
-        let bot_dist = dist(&x, &int(bot.pos.x), &zero).add(&[&dist(&y, &int(bot.pos.y), &zero), &dist(&z, &int(bot.pos.z), &zero)]);
+        let bot_dist = dist(&x, &int(bot.pos.x), &zero)
+            + dist(&y, &int(bot.pos.y), &zero)
+            + dist(&z, &int(bot.pos.z), &zero);
         let sig = int(bot.signal_radius as i32);
         // 1 when in range, 0 otherwise
         let bot_in_range = bot_dist.le(&sig).ite(&one, &zero);
@@ -118,16 +116,17 @@ fn solve(bots: &Vec<Nanobot>) -> Solution {
 
     // create the variable that counts the number of bots in range
     let in_range_count = z3::ast::Int::new_const(&ctx, "sum");
-    let sum = in_range.iter().fold(zero.clone(), |acc, value| {
-        acc.add(&[value])
-    });
+    let sum = in_range.iter().fold(zero.clone(), |acc, value| acc + value);
 
     // adds a constraint such that we compute the sum
     optimizer.assert(&in_range_count._eq(&sum));
 
     // when multiple pts match, we must choose the closest to 0,0,0, so let's minimize that
     let dist_to_origin = z3::ast::Int::new_const(&ctx, "dist_to_origin");
-    optimizer.assert(&dist_to_origin._eq(&dist(&x, &zero, &zero).add(&[&dist(&y, &zero, &zero), &dist(&z, &zero, &zero)])));
+    optimizer.assert(
+        &dist_to_origin
+            ._eq(&(dist(&x, &zero, &zero) + dist(&y, &zero, &zero) + &dist(&z, &zero, &zero))),
+    );
 
     // maximize the number of bots in range
     optimizer.maximize(&in_range_count);
@@ -136,38 +135,55 @@ fn solve(bots: &Vec<Nanobot>) -> Solution {
 
     match optimizer.check(&[]) {
         z3::SatResult::Sat => {
-            let model = optimizer.get_model();
+            let model = optimizer.get_model().unwrap();
             Solution {
-                bots_in_range: model.eval(&in_range_count).unwrap().as_i64().unwrap() as u32,
-                optimal: Pt::new(model.eval(&x).unwrap().as_i64().unwrap() as i32, model.eval(&y).unwrap().as_i64().unwrap() as i32, model.eval(&z).unwrap().as_i64().unwrap() as i32)
+                bots_in_range: model.eval(&in_range_count, true).unwrap().as_i64().unwrap() as u32,
+                optimal: Pt::new(
+                    model.eval(&x, true).unwrap().as_i64().unwrap() as i32,
+                    model.eval(&y, true).unwrap().as_i64().unwrap() as i32,
+                    model.eval(&z, true).unwrap().as_i64().unwrap() as i32,
+                ),
             }
-        },
-        _ => panic!("Solver did not sat!")
+        }
+        _ => panic!("Solver did not sat!"),
     }
 }
 
 fn parse(input: &str) -> Vec<Nanobot> {
-    input.lines().map(|line| Nanobot::from_str(line).unwrap() ).collect()
+    input
+        .lines()
+        .map(|line| Nanobot::from_str(line).unwrap())
+        .collect()
 }
 
 pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
-    Box::new(Puzzle23 { bots: parse(&input) })
+    Box::new(Puzzle23 {
+        bots: parse(&input),
+    })
 }
 
 struct Puzzle23 {
-    bots: Vec<Nanobot>
+    bots: Vec<Nanobot>,
 }
 
 impl crate::Puzzle for Puzzle23 {
     fn part1(&self) -> String {
-        let strongest = self.bots.iter().max_by_key(|bot| bot.signal_radius).expect("no bots");
-        self.bots.iter().filter(|bot| strongest.in_range(bot)).count().to_string()
+        let strongest = self
+            .bots
+            .iter()
+            .max_by_key(|bot| bot.signal_radius)
+            .expect("no bots");
+        self.bots
+            .iter()
+            .filter(|bot| strongest.in_range(bot))
+            .count()
+            .to_string()
     }
 
     fn part2(&self) -> String {
         let sol = solve(&self.bots);
         println!("{:?}", sol);
-        sol.optimal.distance(&Pt::new(0,0,0)).to_string()
+        sol.optimal.distance(&Pt::new(0, 0, 0)).to_string()
     }
 }
 
@@ -176,7 +192,7 @@ mod tests {
     use super::*;
     use crate::Puzzle;
 
-    const EXAMPLE1: &str ="pos=<0,0,0>, r=4
+    const EXAMPLE1: &str = "pos=<0,0,0>, r=4
 pos=<1,0,0>, r=1
 pos=<4,0,0>, r=3
 pos=<0,2,0>, r=1
@@ -197,22 +213,43 @@ pos=<10,10,10>, r=5";
     fn test_parse() {
         let bots = parse(EXAMPLE1);
         assert_eq!(9, bots.len());
-        assert_eq!(Nanobot { pos: Pt::new(0,0,0), signal_radius: 4 }, bots[0]);
-        assert_eq!(Nanobot { pos: Pt::new(1,0,0), signal_radius: 1 }, bots[1]);
-        assert_eq!(Nanobot { pos: Pt::new(1,3,1), signal_radius: 1 }, bots[bots.len()-1]);
+        assert_eq!(
+            Nanobot {
+                pos: Pt::new(0, 0, 0),
+                signal_radius: 4
+            },
+            bots[0]
+        );
+        assert_eq!(
+            Nanobot {
+                pos: Pt::new(1, 0, 0),
+                signal_radius: 1
+            },
+            bots[1]
+        );
+        assert_eq!(
+            Nanobot {
+                pos: Pt::new(1, 3, 1),
+                signal_radius: 1
+            },
+            bots[bots.len() - 1]
+        );
     }
 
     #[test]
     fn test_part1() {
-        let pzl = Puzzle23 { bots: parse(EXAMPLE1) };
+        let pzl = Puzzle23 {
+            bots: parse(EXAMPLE1),
+        };
         assert_eq!("7", pzl.part1());
     }
 
     #[test]
     fn test_part2() {
-        let pzl = Puzzle23 { bots: parse(EXAMPLE2) };
+        let pzl = Puzzle23 {
+            bots: parse(EXAMPLE2),
+        };
         let sol = solve(&pzl.bots);
-        assert_eq!(Pt::new(12,12,12), sol.optimal);
+        assert_eq!(Pt::new(12, 12, 12), sol.optimal);
     }
-
 }
