@@ -1,8 +1,9 @@
-use std::str::FromStr;
 use regex::Regex;
+use serde::Deserialize;
+use std::str::FromStr;
 
 #[allow(non_camel_case_types)]
-#[derive(PartialEq, Eq, Hash, enum_utils::FromStr, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Deserialize, Clone, Debug)]
 enum OpCode {
     addr,
     addi,
@@ -29,7 +30,7 @@ enum OpCode {
 }
 
 impl OpCode {
-    fn run(&self, bench: &mut [usize;6], a: usize, b: usize, c: usize) {
+    fn run(&self, bench: &mut [usize; 6], a: usize, b: usize, c: usize) {
         use OpCode::*;
         match self {
             // addr (add register) stores into register C the result of adding register A and register B.
@@ -79,7 +80,7 @@ struct Instr {
     code: OpCode,
     a: usize,
     b: usize,
-    c: usize
+    c: usize,
 }
 
 impl FromStr for Instr {
@@ -87,14 +88,12 @@ impl FromStr for Instr {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts = s.split_ascii_whitespace().collect::<Vec<_>>();
-        Ok(
-            Instr {
-                code: OpCode::from_str(parts[0]).unwrap(), // using ? requires converting the error, not sure what's the best approach
-                a: usize::from_str(parts[1])?,
-                b: usize::from_str(parts[2])?,
-                c: usize::from_str(parts[3])?,
-            }
-        )
+        Ok(Instr {
+            code: serde_plain::from_str::<OpCode>(parts[0]).unwrap(), // using ? requires converting the error, not sure what's the best approach
+            a: usize::from_str(parts[1])?,
+            b: usize::from_str(parts[2])?,
+            c: usize::from_str(parts[3])?,
+        })
     }
 }
 
@@ -102,12 +101,16 @@ impl FromStr for Instr {
 struct Cpu {
     ip_register: usize,
     ip: usize,
-    bench: [usize; 6]
+    bench: [usize; 6],
 }
 
 impl Cpu {
     fn new(ip_register: usize) -> Self {
-        Cpu { ip_register, ip: 0, bench: [0;6] }
+        Cpu {
+            ip_register,
+            ip: 0,
+            bench: [0; 6],
+        }
     }
 
     fn run(&mut self, program: &Vec<Instr>) {
@@ -119,9 +122,13 @@ impl Cpu {
                     // before the instruction, set the instr pointer register to the value of the instr pointer.
                     self.bench[self.ip_register] = self.ip;
 
-                    if self.ip == 1 && program.len() > 7 { // special case part2
+                    if self.ip == 1 && program.len() > 7 {
+                        // special case part2
                         // sum of factors.
-                        self.bench[0] = self.bench[3] + (1..=self.bench[3]/2).filter(|x| self.bench[3] % *x  == 0).sum::<usize>();
+                        self.bench[0] = self.bench[3]
+                            + (1..=self.bench[3] / 2)
+                                .filter(|x| self.bench[3] % *x == 0)
+                                .sum::<usize>();
                         /*
                         self.bench[5] = 1;
                         while self.bench[5] <= self.bench[3] {
@@ -154,7 +161,6 @@ impl Cpu {
 }
 
 fn parse(input: &str) -> (Cpu, Vec<Instr>) {
-
     let ip_register = match input.lines().take(1).last() {
         None => panic!("empty input"),
         Some(line) => {
@@ -180,7 +186,7 @@ pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
 
 struct Puzzle19 {
     cpu: Cpu,
-    program: Vec<Instr>
+    program: Vec<Instr>,
 }
 
 impl crate::Puzzle for Puzzle19 {
@@ -216,9 +222,33 @@ seti 9 0 5"#;
         let (cpu, mut program) = parse(EXAMPLE);
         assert_eq!(0, cpu.ip_register);
         assert_eq!(7, program.len());
-        assert_eq!(Some(Instr { code: OpCode::seti, a: 9, b: 0, c: 5 }), program.pop());
-        assert_eq!(Some(Instr { code: OpCode::seti, a: 8, b: 0, c: 4 }), program.pop());
-        assert_eq!(Some(Instr { code: OpCode::setr, a: 1, b: 0, c: 0 }), program.pop());
+        assert_eq!(
+            Some(Instr {
+                code: OpCode::seti,
+                a: 9,
+                b: 0,
+                c: 5
+            }),
+            program.pop()
+        );
+        assert_eq!(
+            Some(Instr {
+                code: OpCode::seti,
+                a: 8,
+                b: 0,
+                c: 4
+            }),
+            program.pop()
+        );
+        assert_eq!(
+            Some(Instr {
+                code: OpCode::setr,
+                a: 1,
+                b: 0,
+                c: 0
+            }),
+            program.pop()
+        );
     }
 
     #[test]

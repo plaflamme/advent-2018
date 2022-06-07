@@ -1,9 +1,10 @@
-use std::str::FromStr;
 use regex::Regex;
+use serde::Deserialize;
 use std::collections::HashSet;
+use std::str::FromStr;
 
 #[allow(non_camel_case_types)]
-#[derive(PartialEq, Eq, Hash, enum_utils::FromStr, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Deserialize, Clone, Debug)]
 enum OpCode {
     addr,
     addi,
@@ -30,7 +31,7 @@ enum OpCode {
 }
 
 impl OpCode {
-    fn run(&self, bench: &mut [usize;6], a: usize, b: usize, c: usize) {
+    fn run(&self, bench: &mut [usize; 6], a: usize, b: usize, c: usize) {
         use OpCode::*;
         match self {
             // addr (add register) stores into register C the result of adding register A and register B.
@@ -80,7 +81,7 @@ struct Instr {
     code: OpCode,
     a: usize,
     b: usize,
-    c: usize
+    c: usize,
 }
 
 impl FromStr for Instr {
@@ -88,14 +89,12 @@ impl FromStr for Instr {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts = s.split_ascii_whitespace().collect::<Vec<_>>();
-        Ok(
-            Instr {
-                code: OpCode::from_str(parts[0]).unwrap(), // using ? requires converting the error, not sure what's the best approach
-                a: usize::from_str(parts[1])?,
-                b: usize::from_str(parts[2])?,
-                c: usize::from_str(parts[3])?,
-            }
-        )
+        Ok(Instr {
+            code: serde_plain::from_str::<OpCode>(parts[0]).unwrap(), // using ? requires converting the error, not sure what's the best approach
+            a: usize::from_str(parts[1])?,
+            b: usize::from_str(parts[2])?,
+            c: usize::from_str(parts[3])?,
+        })
     }
 }
 
@@ -103,46 +102,50 @@ impl FromStr for Instr {
 struct Cpu {
     ip_register: usize,
     ip: usize,
-    bench: [usize; 6]
+    bench: [usize; 6],
 }
 
 impl Cpu {
     fn new(ip_register: usize) -> Self {
-        Cpu { ip_register, ip: 0, bench: [0;6] }
+        Cpu {
+            ip_register,
+            ip: 0,
+            bench: [0; 6],
+        }
     }
 
     fn step(&mut self, i: &Instr) {
         // before the instruction, set the instr pointer register to the value of the instr pointer.
         self.bench[self.ip_register] = self.ip;
 
-//        print!("ip={} {:?} {:?}", self.ip, self.bench, i);
+        //        print!("ip={} {:?} {:?}", self.ip, self.bench, i);
         i.code.run(&mut self.bench, i.a, i.b, i.c);
         // after the instruction, set the instr pointer to the value of the instr register and increment by one
         self.ip = self.bench[self.ip_register] + 1;
-//        println!(" {:?}", self.bench);
+        //        println!(" {:?}", self.bench);
     }
 }
 
 enum State {
     Breakpoint,
-    Halt
+    Halt,
 }
 
 struct Debugger {
     cpu: Cpu,
     program: Vec<Instr>,
-    breakpoint: usize
+    breakpoint: usize,
 }
 
 impl Debugger {
     fn run(&mut self) -> State {
         loop {
             match self.program.get(self.cpu.ip) {
-                None => break  State::Halt,
+                None => break State::Halt,
                 Some(instr) => {
                     self.cpu.step(instr);
                     if self.cpu.ip == self.breakpoint {
-                       break State::Breakpoint;
+                        break State::Breakpoint;
                     }
                 }
             };
@@ -151,7 +154,6 @@ impl Debugger {
 }
 
 fn parse(input: &str) -> (Cpu, Vec<Instr>) {
-
     let ip_register = match input.lines().take(1).last() {
         None => panic!("empty input"),
         Some(line) => {
@@ -177,7 +179,7 @@ pub fn mk(input: String) -> Box<dyn crate::Puzzle> {
 
 struct Puzzle21 {
     cpu: Cpu,
-    program: Vec<Instr>
+    program: Vec<Instr>,
 }
 /*
 #ip 5
@@ -311,14 +313,22 @@ do {
 impl crate::Puzzle for Puzzle21 {
     fn part1(&self) -> String {
         // ip=28 is when we compare against register 0 with R3, so we simply need to stop at that point and check what the contents of R3 is
-        let mut debug = Debugger { cpu: self.cpu.clone(), program: self.program.clone(), breakpoint: 28 };
+        let mut debug = Debugger {
+            cpu: self.cpu.clone(),
+            program: self.program.clone(),
+            breakpoint: 28,
+        };
         debug.run();
         debug.cpu.bench[3].to_string()
     }
 
     fn part2(&self) -> String {
         // the most instructions is right before R3 loops around to some value we've seen before.
-        let mut debug = Debugger { cpu: self.cpu.clone(), program: self.program.clone(), breakpoint: 28 };
+        let mut debug = Debugger {
+            cpu: self.cpu.clone(),
+            program: self.program.clone(),
+            breakpoint: 28,
+        };
         let mut seen = HashSet::new();
         let mut prev = 0 as usize;
         let found = loop {
